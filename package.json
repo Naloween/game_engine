@@ -7,7 +7,8 @@
         "express": "^4.17.2",
         "gl-matrix": "^3.4.3",
         "simplex-noise": "^4.0.0",
-        "tsify": "^5.0.4"
+        "tsify": "^5.0.4",
+        "watchify": "^4.0.0"
     },
     "devDependencies": {
         "@types/browserify": "^12.0.37"

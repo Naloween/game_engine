@@ -315,11 +315,11 @@ class GameEngine{
     }
 
     generate_world(){
-        const positions = [];
-        const normals = [];
-        const diffuseColors = [];
-        const transparency = [];
-        const indexes = [];
+        const positions: number[] = [];
+        const normals: number[] = [];
+        const diffuseColors: number[] = [];
+        const transparency: number[] = [];
+        const indexes: number[] = [];
 
         let vertex_offset = 0;
 

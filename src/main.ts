@@ -28,6 +28,7 @@ const landscape = (a: number, b: number) => {
 
 
 // Main
+
 let player = new Player([0,0,0], 0, Math.PI/2);
 
 let width = 1100;
