@@ -176,7 +176,7 @@ class GraphicEngine{
     currentTransparencyLocation: WebGLUniformLocation;
     currentDiffuseColorLocation: WebGLUniformLocation;
     
-    texture: WebGLTexture;// = new WebGLTexture();
+    texture: WebGLTexture | null = null;
 
     constructor(gl: WebGL2RenderingContext){
 
