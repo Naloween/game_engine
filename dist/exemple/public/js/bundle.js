@@ -8765,15 +8765,19 @@ var GameEngine = /** @class */ (function () {
         this.camera = new GraphicEngine_1.Camera(width, height, render_distance);
         //Graphic engine
         this.engine = new GraphicEngine_1.GraphicEngine(view.getContext("webgl2"));
+        this.generate_world();
+        this.load_mode("Triangle");
+        // Events
+        this.load_events();
+    }
+    GameEngine.prototype.load_mode = function (mode) {
+        this.engine.loadMode(mode);
         var TransformMatrix = gl_matrix_1.mat4.create();
         this.engine.setTransformVertices(TransformMatrix);
         this.engine.setCameraUniforms(this.camera);
         this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1., 1., 1.]);
-        this.generate_world();
         this.engine.render();
-        // Events
-        this.load_events();
-    }
+    };
     GameEngine.prototype.load_events = function () {
         var _this = this;
         //lock view
@@ -8881,7 +8885,7 @@ var GameEngine = /** @class */ (function () {
             }
         }
         this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
-        this.engine.nb_indexes = indexes.length;
+        this.engine.nb_triangles_indexes = indexes.length;
     };
     GameEngine.prototype.update_world = function () {
         var dl = this.nb_chunk * this.chunk_size;
@@ -8961,9 +8965,7 @@ exports.GameEngine = GameEngine;
 exports.__esModule = true;
 exports.GraphicEngine = exports.Camera = exports.Material = exports.Light = void 0;
 var gl_matrix_1 = require("gl-matrix");
-// Shader Programs
-var VertexShaderSource = "\n    attribute vec4 aVertexPosition;\n    attribute vec3 aVertexNormal;\n    attribute vec3 aVertexDiffuseColor;\n    attribute vec3 aVertexTransparency;\n\n    uniform mat4 uTransformMatrix;\n    uniform mat4 uProjectionMatrix;\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCurrentTransparency;\n    uniform vec3 uCurrentDiffuseColor;\n\n    varying highp vec3 vDiffuseLighting;\n\n    void main() {\n        gl_Position = uProjectionMatrix * uTransformMatrix * aVertexPosition;\n\n        // Apply lighting effect\n\n        highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);\n        highp vec3 directionalLightColor = vec3(1, 1, 1);\n        highp vec3 directionalVector = normalize(vec3(1., 1., 1.));\n\n        highp float distance = length(aVertexPosition.xyz - uCameraPosition);\n  \n        highp float directional = max(dot(aVertexNormal.xyz, directionalVector), 0.0);\n\n        highp vec3 current_material_percentage = 1. - vec3(pow(uCurrentTransparency.r, distance), pow(uCurrentTransparency.g, distance), pow(uCurrentTransparency.b, distance));\n        highp vec3 vertex_material_percentage = 1. - vec3(pow(aVertexTransparency.r, distance), pow(aVertexTransparency.g, distance), pow(aVertexTransparency.b, distance));\n\n        vDiffuseLighting = current_material_percentage * uCurrentDiffuseColor + (1. - current_material_percentage) * directional * aVertexDiffuseColor;\n    }\n";
-var FragmentShaderSource = "\n    varying highp vec3 vDiffuseLighting;\n\n    void main() {\n        gl_FragColor = vec4(vDiffuseLighting, 1.);\n    }\n";
+var Shaders_1 = require("./Shaders");
 // Classes
 var Light = /** @class */ (function () {
     function Light(power, color, position) {
@@ -8974,8 +8976,12 @@ var Light = /** @class */ (function () {
     }
     Light.prototype.toArray = function () {
         var result = [this.power];
-        result = result.concat(this.color);
-        result = result.concat(this.position);
+        result.push(this.color[0]);
+        result.push(this.color[1]);
+        result.push(this.color[2]);
+        result.push(this.position[0]);
+        result.push(this.position[1]);
+        result.push(this.position[2]);
         return result;
     };
     Light.next_id = 0;
@@ -8983,19 +8989,26 @@ var Light = /** @class */ (function () {
 }());
 exports.Light = Light;
 var Material = /** @class */ (function () {
-    function Material(diffusion, transparency, reflection, refraction) {
-        this.diffusion = diffusion; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
+    function Material(albedo, transparency, metallic, ior, emmissive) {
+        if (albedo === void 0) { albedo = [1, 1, 1]; }
+        if (transparency === void 0) { transparency = [0, 0, 0]; }
+        if (metallic === void 0) { metallic = [0, 0, 0]; }
+        if (ior === void 0) { ior = [1, 1, 1]; }
+        if (emmissive === void 0) { emmissive = [0, 0, 0]; }
+        this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
         this.transparency = transparency;
-        this.reflection = reflection; // entre 0 et 1
-        this.refraction = refraction; //n1*sin(i) = n2*sin(r)
+        this.metallic = metallic; // entre 0 et 1
+        this.ior = ior; //n1*sin(i) = n2*sin(r)
+        this.emmissive = emmissive;
         this.id = -1;
     }
     Material.prototype.toArray = function () {
-        var result = Array(this.diffusion);
+        var result = Array(this.albedo);
         result = result.concat(this.transparency);
-        result = result.concat(this.reflection);
-        result = result.concat(this.refraction);
-        return result; //[r, g, b, transparency, reflection, refraction]
+        result = result.concat(this.metallic);
+        result = result.concat(this.ior);
+        result = result.concat(this.emmissive);
+        return result; //[albedo, transparency, metallic, ior, emmissive]
     };
     Material.next_id = 0;
     return Material;
@@ -9023,61 +9036,63 @@ var Camera = /** @class */ (function () {
         gl_matrix_1.mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.teta, [0, 0, -1]);
         gl_matrix_1.mat4.translate(this.projectionMatrix, this.projectionMatrix, this.position);
     };
+    Camera.prototype.getRepere = function () {
+        var u = gl_matrix_1.vec3.fromValues(Math.sin(this.phi) * Math.cos(this.teta), Math.sin(this.phi) * Math.sin(this.teta), Math.cos(this.phi));
+        var uy = gl_matrix_1.vec3.fromValues(-Math.cos(this.phi) * Math.cos(this.teta), -Math.cos(this.phi) * Math.sin(this.teta), Math.sin(this.phi));
+        // ux produit vectoriel de u et uy
+        var ux = gl_matrix_1.vec3.fromValues(u[1] * uy[2] - u[2] * uy[1], u[2] * uy[0] - u[0] * uy[2], u[0] * uy[1] - u[1] * uy[0]);
+        return [u, ux, uy];
+    };
     return Camera;
 }());
 exports.Camera = Camera;
 var GraphicEngine = /** @class */ (function () {
     function GraphicEngine(gl) {
-        this.nb_indexes = 0;
-        this.texture = null;
+        this.nb_triangles_indexes = 0;
         this.gl = gl;
-        this.shaderProgram = this.initShaderProgram(VertexShaderSource, FragmentShaderSource);
-        // buffers
-        this.indexBuffer = this.gl.createBuffer();
-        this.positionBuffer = this.gl.createBuffer();
-        this.normalBuffer = this.gl.createBuffer();
-        this.diffuseColorBuffer = this.gl.createBuffer();
-        this.transparencyBuffer = this.gl.createBuffer();
-        // attributes locations
-        this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
-        this.vertexNormalLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexNormal');
-        this.vertexDiffuseColorLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexDiffuseColor');
-        this.vertexTransparencyLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexTransparency');
-        // uniforms locations
-        this.projectionMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, 'uProjectionMatrix');
-        this.TransformMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTransformMatrix');
-        this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraPosition');
-        this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentTransparency');
-        this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor');
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
-        this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
-        this.gl.enableVertexAttribArray(this.vertexPositionLocation);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
-        this.gl.vertexAttribPointer(this.vertexNormalLocation, 3, this.gl.FLOAT, false, 0, 0);
-        this.gl.enableVertexAttribArray(this.vertexNormalLocation);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.diffuseColorBuffer);
-        this.gl.vertexAttribPointer(this.vertexDiffuseColorLocation, 3, this.gl.FLOAT, false, 0, 0);
-        this.gl.enableVertexAttribArray(this.vertexDiffuseColorLocation);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.transparencyBuffer);
-        this.gl.vertexAttribPointer(this.vertexTransparencyLocation, 3, this.gl.FLOAT, false, 0, 0);
-        this.gl.enableVertexAttribArray(this.vertexTransparencyLocation);
-        this.gl.useProgram(this.shaderProgram);
+        this.gl.enable(this.gl.DEPTH_TEST); // Enable depth testing
+        this.gl.depthFunc(this.gl.LEQUAL); // Near things obscure far things
+        // buffers: load them independently of current mode
+        this.loadBuffers();
     }
     GraphicEngine.prototype.render = function () {
         this.gl.clearColor(0.0, 0.0, 0.0, 0.0); // Clear to fully transparent
         this.gl.clearDepth(1.0); // Clear everything
-        this.gl.enable(this.gl.DEPTH_TEST); // Enable depth testing
-        this.gl.depthFunc(this.gl.LEQUAL); // Near things obscure far things
         // Clear the canvas before we start drawing on it.
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
         // Tell WebGL which indices to use to index the vertices
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        this.gl.drawElements(this.gl.TRIANGLES, this.nb_indexes, this.gl.UNSIGNED_INT, 0);
+        if (this.mode == "Triangle") {
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.trianglesBuffer);
+            this.gl.drawElements(this.gl.TRIANGLES, this.nb_triangles_indexes, this.gl.UNSIGNED_INT, 0);
+        }
+        else if (this.mode == "Raytracing") {
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
+            this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+        }
     };
-    GraphicEngine.prototype.initShaderProgram = function (vsSource, fsSource) {
-        var vertexShader = this.loadShader(this.gl.VERTEX_SHADER, vsSource);
-        var fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, fsSource);
+    GraphicEngine.prototype.loadMode = function (mode) {
+        this.mode = mode;
+        this.shaderProgram = this.initShaderProgram();
+        // locations: link buffers to shader program
+        this.loadLocations();
+        this.gl.useProgram(this.shaderProgram);
+    };
+    GraphicEngine.prototype.initShaderProgram = function () {
+        var vertexShader = null;
+        var fragmentShader = null;
+        if (this.mode == "Triangle") {
+            vertexShader = this.loadShader(this.gl.VERTEX_SHADER, Shaders_1.TriangleVertexShaderSource);
+            fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, Shaders_1.TriangleFragmentShaderSource);
+        }
+        else if (this.mode == "Raytracing") {
+            vertexShader = this.loadShader(this.gl.VERTEX_SHADER, Shaders_1.RayTracingVertexShaderSource);
+            fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, Shaders_1.RayTracingFragmentShaderSource);
+        }
         // Créer le programme shader
+        if (vertexShader == null || fragmentShader == null) {
+            console.log("error: vertex shader or fragment shader is null");
+            return null;
+        }
         var shaderProgram = this.gl.createProgram();
         this.gl.attachShader(shaderProgram, vertexShader);
         this.gl.attachShader(shaderProgram, fragmentShader);
@@ -9104,6 +9119,84 @@ var GraphicEngine = /** @class */ (function () {
         }
         return shader;
     };
+    GraphicEngine.prototype.loadBuffers = function () {
+        this.trianglesCanvasBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array([
+            -1., -1., 0.,
+            -1., 1., 0.,
+            1., -1., 0.,
+            1., -1., 0.,
+            -1., 1., 0.,
+            1., 1., 0.,
+        ]), this.gl.STATIC_DRAW);
+        this.trianglesBuffer = this.gl.createBuffer();
+        this.positionBuffer = this.gl.createBuffer();
+        this.normalBuffer = this.gl.createBuffer();
+        this.diffuseColorBuffer = this.gl.createBuffer();
+        this.transparencyBuffer = this.gl.createBuffer();
+    };
+    GraphicEngine.prototype.loadTextures = function () {
+        function isPowerOf2(value) {
+            return (value & (value - 1)) == 0;
+        }
+        this.verticesTexture = this.gl.createTexture();
+        this.trianglesTexture = this.gl.createTexture();
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, 0, 0, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array([]));
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, 0, 0, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array([]));
+    };
+    GraphicEngine.prototype.loadLocations = function () {
+        if (this.mode == "Triangle") {
+            // uniforms locations
+            this.projectionMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, 'uProjectionMatrix');
+            this.TransformMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTransformMatrix');
+            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraPosition');
+            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentTransparency');
+            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor');
+            // attributes locations
+            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
+            this.vertexNormalLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexNormal');
+            this.vertexDiffuseColorLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexDiffuseColor');
+            this.vertexTransparencyLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexTransparency');
+            // set attribute location to corresponding buffer with iteration parameters
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
+            this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
+            this.gl.enableVertexAttribArray(this.vertexPositionLocation);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
+            this.gl.vertexAttribPointer(this.vertexNormalLocation, 3, this.gl.FLOAT, false, 0, 0);
+            this.gl.enableVertexAttribArray(this.vertexNormalLocation);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.diffuseColorBuffer);
+            this.gl.vertexAttribPointer(this.vertexDiffuseColorLocation, 3, this.gl.FLOAT, false, 0, 0);
+            this.gl.enableVertexAttribArray(this.vertexDiffuseColorLocation);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.transparencyBuffer);
+            this.gl.vertexAttribPointer(this.vertexTransparencyLocation, 3, this.gl.FLOAT, false, 0, 0);
+            this.gl.enableVertexAttribArray(this.vertexTransparencyLocation);
+        }
+        else if (this.mode == "Raytracing") {
+            // uniforms locations
+            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraPosition');
+            this.cameraDirectionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraDirection');
+            this.cameraDirectionXLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraDirectionX');
+            this.cameraDirectionYLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraDirectionY');
+            this.cameraFovLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraFov');
+            this.cameraWidthLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraWidth');
+            this.cameraHeightLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraHeight');
+            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentTransparency');
+            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor');
+            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, 'uMaterials');
+            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uLightSources');
+            this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uVertices');
+            this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTriangles');
+            // attributes locations
+            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
+            // set attribute location to corresponding buffer with iteration parameters
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
+            this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
+            this.gl.enableVertexAttribArray(this.vertexPositionLocation);
+        }
+    };
     GraphicEngine.prototype.setBuffers = function (positions, normals, diffuseColor, transparency, indexes) {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(positions), this.gl.STATIC_DRAW);
@@ -9113,9 +9206,20 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(diffuseColor), this.gl.STATIC_DRAW);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.transparencyBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(transparency), this.gl.STATIC_DRAW);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.trianglesBuffer);
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indexes), this.gl.STATIC_DRAW);
     };
+    GraphicEngine.prototype.setTextures = function (vertices, triangles) {
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
+        var width = vertices.length;
+        var height = 1;
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, width, height, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array(vertices));
+        width = triangles.length;
+        height = 1;
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, width, height, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array(triangles));
+    };
+    ;
     GraphicEngine.prototype.updateVertices = function (offset, positions, normals, diffuseColor, transparency) {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
         this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset * 4, new Float32Array(positions));
@@ -9128,7 +9232,19 @@ var GraphicEngine = /** @class */ (function () {
     };
     GraphicEngine.prototype.setCameraUniforms = function (camera) {
         // Set the shader uniform projection matrix
-        this.gl.uniformMatrix4fv(this.projectionMatrixLocation, false, camera.projectionMatrix);
+        if (this.mode == "Triangle") {
+            this.gl.uniformMatrix4fv(this.projectionMatrixLocation, false, camera.projectionMatrix);
+        }
+        else if (this.mode == "Raytracing") {
+            // Set the shader uniform camera direction
+            var _a = camera.getRepere(), direction = _a[0], ux = _a[1], uy = _a[2];
+            this.gl.uniform3f(this.cameraDirectionLocation, -direction[0], -direction[1], -direction[2]);
+            this.gl.uniform3f(this.cameraDirectionXLocation, -ux[0], -ux[1], -ux[2]);
+            this.gl.uniform3f(this.cameraDirectionYLocation, -uy[0], -uy[1], -uy[2]);
+            this.gl.uniform1f(this.cameraFovLocation, camera.fov);
+            this.gl.uniform1f(this.cameraWidthLocation, camera.width);
+            this.gl.uniform1f(this.cameraHeightLocation, camera.height);
+        }
         // Set the shader uniform camera position
         this.gl.uniform3f(this.cameraPositionLocation, -camera.position[0], -camera.position[1], -camera.position[2]);
     };
@@ -9138,48 +9254,31 @@ var GraphicEngine = /** @class */ (function () {
     };
     GraphicEngine.prototype.setTransformVertices = function (TransformMatrix) {
         // Set the shader uniforms
-        this.gl.uniformMatrix4fv(this.TransformMatrixLocation, false, TransformMatrix);
-    };
-    GraphicEngine.prototype.loadTexture = function (url) {
-        var _this = this;
-        var image = new Image();
-        image.onload = function () {
-            function isPowerOf2(value) {
-                return (value & (value - 1)) == 0;
-            }
-            var level = 0;
-            var internalFormat = _this.gl.RGBA;
-            var width = 1;
-            var height = 1;
-            var border = 0;
-            var srcFormat = _this.gl.RGBA;
-            var srcType = _this.gl.UNSIGNED_BYTE;
-            var pixel = new Uint8Array([0, 0, 255, 255]); // opaque blue
-            _this.gl.bindTexture(_this.gl.TEXTURE_2D, _this.texture);
-            _this.gl.texImage2D(_this.gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, image);
-            // WebGL1 has different requirements for power of 2 images
-            // vs non power of 2 images so check if the image is a
-            // power of 2 in both dimensions.
-            if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-                // Yes, it's a power of 2. Generate mips.
-                _this.gl.generateMipmap(_this.gl.TEXTURE_2D);
-            }
-            else {
-                // No, it's not a power of 2. Turn off mips and set
-                // wrapping to clamp to edge
-                _this.gl.texParameteri(_this.gl.TEXTURE_2D, _this.gl.TEXTURE_WRAP_S, _this.gl.CLAMP_TO_EDGE);
-                _this.gl.texParameteri(_this.gl.TEXTURE_2D, _this.gl.TEXTURE_WRAP_T, _this.gl.CLAMP_TO_EDGE);
-                _this.gl.texParameteri(_this.gl.TEXTURE_2D, _this.gl.TEXTURE_MIN_FILTER, _this.gl.LINEAR);
-            }
-        };
-        image.src = url;
+        if (this.mode == "Triangle") {
+            this.gl.uniformMatrix4fv(this.TransformMatrixLocation, false, TransformMatrix);
+        }
     };
     return GraphicEngine;
 }());
 exports.GraphicEngine = GraphicEngine;
 
-},{"gl-matrix":2}],15:[function(require,module,exports){
+},{"./Shaders":15,"gl-matrix":2}],15:[function(require,module,exports){
 "use strict";
+// Shader Programs
+exports.__esModule = true;
+exports.RayTracingVertexShaderSource = exports.RayTracingFragmentShaderSource = exports.TriangleVertexShaderSource = exports.TriangleFragmentShaderSource = void 0;
+var TriangleVertexShaderSource = "\n    precision highp float;\n\n    attribute vec4 aVertexPosition;\n    attribute vec3 aVertexNormal;\n    attribute vec3 aVertexDiffuseColor;\n    attribute vec3 aVertexTransparency;\n\n    uniform mat4 uTransformMatrix;\n    uniform mat4 uProjectionMatrix;\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCurrentTransparency;\n    uniform vec3 uCurrentDiffuseColor;\n\n    varying vec3 vDiffuseLighting;\n\n    void main() {\n        gl_Position = uProjectionMatrix * uTransformMatrix * aVertexPosition;\n\n        // Apply lighting effect\n\n        vec3 ambientLight = vec3(0.3, 0.3, 0.3);\n        vec3 directionalLightColor = vec3(1, 1, 1);\n        vec3 directionalVector = normalize(vec3(1., 1., 1.));\n\n        float distance = length(aVertexPosition.xyz - uCameraPosition);\n  \n        float directional = max(dot(aVertexNormal.xyz, directionalVector), 0.0);\n\n        vec3 current_material_percentage = 1. - vec3(pow(uCurrentTransparency.r, distance), pow(uCurrentTransparency.g, distance), pow(uCurrentTransparency.b, distance));\n        vec3 vertex_material_percentage = 1. - vec3(pow(aVertexTransparency.r, distance), pow(aVertexTransparency.g, distance), pow(aVertexTransparency.b, distance));\n\n        vDiffuseLighting = current_material_percentage * uCurrentDiffuseColor + (1. - current_material_percentage) * directional * aVertexDiffuseColor;\n    }\n";
+exports.TriangleVertexShaderSource = TriangleVertexShaderSource;
+var TriangleFragmentShaderSource = "\n    precision highp float;\n\n    varying highp vec3 vDiffuseLighting;\n\n    void main() {\n        \n        gl_FragColor = vec4(vDiffuseLighting, 1.);\n    }\n";
+exports.TriangleFragmentShaderSource = TriangleFragmentShaderSource;
+var RayTracingVertexShaderSource = "\n    precision highp float;\n\n    attribute vec4 aVertexPosition;\n\n    void main() {\n        gl_Position = aVertexPosition;\n    }\n";
+exports.RayTracingVertexShaderSource = RayTracingVertexShaderSource;
+var RayTracingFragmentShaderSource = "\n\n    // Precisions\n\n    precision highp float;\n    precision mediump int;\n\n\n\n    // Structures\n\n    struct Material\n    {\n        vec3 metallic; //reflection irror like\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        float power;\n        vec3 color;\n        vec3 position;\n    };\n\n\n\n    // Uniforms\n\n    uniform Material uMaterials[10];\n    uniform LightSource uLightSources[10];\n    uniform sampler2D uVertices;\n    uniform sampler2D uTriangles;\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n\n\n    // Functions\n\n    vec3 getPixelColor();\n\n    vec3 getPixelColor(){\n        float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;\n        float dy = uCameraFov * ((uCameraHeight - gl_FragCoord.y) - uCameraHeight/2.) / uCameraWidth;\n    \n        vec3 direction = vec3(\n            uCameraDirection.x - dx * uCameraDirectionX.x - dy * uCameraDirectionY.x,\n            uCameraDirection.y - dx * uCameraDirectionX.y - dy * uCameraDirectionY.y,\n            uCameraDirection.z - dx * uCameraDirectionX.z - dy * uCameraDirectionY.z\n        );\n\n        direction = normalize(direction);\n\n\n        return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n    }\n\n    void main() {\n        vec3 color = getPixelColor();\n        gl_FragColor = vec4(color ,1.);\n    }\n";
+exports.RayTracingFragmentShaderSource = RayTracingFragmentShaderSource;
+
+},{}],16:[function(require,module,exports){
+"use strict";
+var _a;
 exports.__esModule = true;
 var GameEngine_1 = require("./GameEngine");
 var simplex_noise_1 = require("simplex-noise");
@@ -9208,6 +9307,15 @@ canvas.width = width;
 canvas.height = height;
 document.getElementById("view").appendChild(canvas);
 var game = new GameEngine_1.GameEngine(canvas, player, landscape);
+// game events
+(_a = document.getElementById("switch_mode_btn")) === null || _a === void 0 ? void 0 : _a.addEventListener("click", function (event) {
+    if (game.engine.mode == "Triangle") {
+        game.load_mode("Raytracing");
+    }
+    else {
+        game.load_mode("Triangle");
+    }
+});
 game.run();
 
-},{"./GameEngine":13,"simplex-noise":12}]},{},[15]);
+},{"./GameEngine":13,"simplex-noise":12}]},{},[16]);

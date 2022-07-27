@@ -26,7 +26,6 @@ const landscape = (a: number, b: number) => {
     return res;
 }
 
-
 // Main
 
 let player = new Player([0,0,0], 0, Math.PI/2);
@@ -40,4 +39,16 @@ canvas.height = height;
 document.getElementById("view")!.appendChild(canvas);
 
 let game = new GameEngine(canvas, player, landscape);
+
+
+// game events
+document.getElementById("switch_mode_btn")?.addEventListener("click", (event)=>{
+    if (game.engine.mode == "Triangle"){
+        game.load_mode("Raytracing");
+    } else {
+        game.load_mode("Triangle");
+    }
+
+});
+
 game.run();

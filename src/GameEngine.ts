@@ -233,18 +233,24 @@ class GameEngine{
         //Graphic engine
         this.engine = new GraphicEngine(view.getContext("webgl2")!);
 
+        this.generate_world();
+
+        this.load_mode("Triangle");
+        
+        // Events
+        this.load_events();
+        
+    }
+
+    load_mode(mode: "Triangle" | "Raytracing"){
+        this.engine.loadMode(mode);
+
         const TransformMatrix = mat4.create();
         this.engine.setTransformVertices(TransformMatrix);
         this.engine.setCameraUniforms(this.camera);
         this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1., 1., 1.]);
 
-        this.generate_world();
-
         this.engine.render();
-        
-        // Events
-        this.load_events();
-        
     }
 
     load_events(){
@@ -352,7 +358,7 @@ class GameEngine{
         }
 
         this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
-        this.engine.nb_indexes = indexes.length;
+        this.engine.nb_triangles_indexes = indexes.length;
     }
 
     update_world(){

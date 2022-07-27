@@ -52,3 +52,9 @@ button{
     top: 1%;
     right: 1%;
 }
+
+#switch_mode_btn{
+    position: absolute;
+    top: 0;
+    right: 0;
+}
