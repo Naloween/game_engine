@@ -9054,6 +9054,8 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.depthFunc(this.gl.LEQUAL); // Near things obscure far things
         // buffers: load them independently of current mode
         this.loadBuffers();
+        this.loadTextures();
+        this.loadMode("Triangle");
     }
     GraphicEngine.prototype.render = function () {
         this.gl.clearColor(0.0, 0.0, 0.0, 0.0); // Clear to fully transparent
@@ -9073,9 +9075,9 @@ var GraphicEngine = /** @class */ (function () {
     GraphicEngine.prototype.loadMode = function (mode) {
         this.mode = mode;
         this.shaderProgram = this.initShaderProgram();
+        this.gl.useProgram(this.shaderProgram);
         // locations: link buffers to shader program
         this.loadLocations();
-        this.gl.useProgram(this.shaderProgram);
     };
     GraphicEngine.prototype.initShaderProgram = function () {
         var vertexShader = null;
@@ -9137,15 +9139,20 @@ var GraphicEngine = /** @class */ (function () {
         this.transparencyBuffer = this.gl.createBuffer();
     };
     GraphicEngine.prototype.loadTextures = function () {
-        function isPowerOf2(value) {
-            return (value & (value - 1)) == 0;
-        }
         this.verticesTexture = this.gl.createTexture();
         this.trianglesTexture = this.gl.createTexture();
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, 0, 0, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array([]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 1, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([1., 0, 1.]));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, 0, 0, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array([]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 1, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array([0, 0, 0]));
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+        this.gl.activeTexture(this.gl.TEXTURE1);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
     };
     GraphicEngine.prototype.loadLocations = function () {
         if (this.mode == "Triangle") {
@@ -9187,8 +9194,11 @@ var GraphicEngine = /** @class */ (function () {
             this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor');
             this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, 'uMaterials');
             this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uLightSources');
+            //textures
             this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uVertices');
             this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTriangles');
+            this.gl.uniform1i(this.verticesLocation, 0); // texture unit 0
+            this.gl.uniform1i(this.trianglesLocation, 1); // texture unit 1
             // attributes locations
             this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
             // set attribute location to corresponding buffer with iteration parameters
@@ -9210,14 +9220,6 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indexes), this.gl.STATIC_DRAW);
     };
     GraphicEngine.prototype.setTextures = function (vertices, triangles) {
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        var width = vertices.length;
-        var height = 1;
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, width, height, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array(vertices));
-        width = triangles.length;
-        height = 1;
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, width, height, 0, this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array(triangles));
     };
     ;
     GraphicEngine.prototype.updateVertices = function (offset, positions, normals, diffuseColor, transparency) {
@@ -9273,7 +9275,7 @@ var TriangleFragmentShaderSource = "\n    precision highp float;\n\n    varying 
 exports.TriangleFragmentShaderSource = TriangleFragmentShaderSource;
 var RayTracingVertexShaderSource = "\n    precision highp float;\n\n    attribute vec4 aVertexPosition;\n\n    void main() {\n        gl_Position = aVertexPosition;\n    }\n";
 exports.RayTracingVertexShaderSource = RayTracingVertexShaderSource;
-var RayTracingFragmentShaderSource = "\n\n    // Precisions\n\n    precision highp float;\n    precision mediump int;\n\n\n\n    // Structures\n\n    struct Material\n    {\n        vec3 metallic; //reflection irror like\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        float power;\n        vec3 color;\n        vec3 position;\n    };\n\n\n\n    // Uniforms\n\n    uniform Material uMaterials[10];\n    uniform LightSource uLightSources[10];\n    uniform sampler2D uVertices;\n    uniform sampler2D uTriangles;\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n\n\n    // Functions\n\n    vec3 getPixelColor();\n\n    vec3 getPixelColor(){\n        float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;\n        float dy = uCameraFov * ((uCameraHeight - gl_FragCoord.y) - uCameraHeight/2.) / uCameraWidth;\n    \n        vec3 direction = vec3(\n            uCameraDirection.x - dx * uCameraDirectionX.x - dy * uCameraDirectionY.x,\n            uCameraDirection.y - dx * uCameraDirectionX.y - dy * uCameraDirectionY.y,\n            uCameraDirection.z - dx * uCameraDirectionX.z - dy * uCameraDirectionY.z\n        );\n\n        direction = normalize(direction);\n\n\n        return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n    }\n\n    void main() {\n        vec3 color = getPixelColor();\n        gl_FragColor = vec4(color ,1.);\n    }\n";
+var RayTracingFragmentShaderSource = "\n\n    // Precisions\n\n    precision mediump float;\n    precision mediump int;\n\n\n\n    // Structures\n\n    struct Material\n    {\n        vec3 metallic; //reflection irror like\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        float power;\n        vec3 color;\n        vec3 position;\n    };\n\n\n\n    // Uniforms\n\n    uniform Material uMaterials[10];\n    uniform LightSource uLightSources[10];\n    uniform sampler2D uVertices;\n    uniform sampler2D uTriangles;\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n\n\n    // Functions\n\n    vec3 getPixelColor();\n\n    vec3 getPixelColor(){\n        float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;\n        float dy = uCameraFov * ((uCameraHeight - gl_FragCoord.y) - uCameraHeight/2.) / uCameraWidth;\n    \n        vec3 direction = vec3(\n            uCameraDirection.x - dx * uCameraDirectionX.x - dy * uCameraDirectionY.x,\n            uCameraDirection.y - dx * uCameraDirectionX.y - dy * uCameraDirectionY.y,\n            uCameraDirection.z - dx * uCameraDirectionX.z - dy * uCameraDirectionY.z\n        );\n\n        direction = normalize(direction);\n\n        // float vertices_sizes = textureSize(uVertices, 0);\n        // float l = vertices_sizes / 100.;\n\n        vec4 vertex = texture2D(uVertices, vec2(0,0));\n\n        return vec3(vertex.a, vertex.g, vertex.g);\n\n        // return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n    }\n\n    void main() {\n        vec3 color = getPixelColor();\n        gl_FragColor = vec4(color ,1.);\n    }\n";
 exports.RayTracingFragmentShaderSource = RayTracingFragmentShaderSource;
 
 },{}],16:[function(require,module,exports){

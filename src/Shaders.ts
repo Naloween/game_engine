@@ -63,7 +63,7 @@ const RayTracingFragmentShaderSource = `
 
     // Precisions
 
-    precision highp float;
+    precision mediump float;
     precision mediump int;
 
 
@@ -121,8 +121,14 @@ const RayTracingFragmentShaderSource = `
 
         direction = normalize(direction);
 
+        // float vertices_sizes = textureSize(uVertices, 0);
+        // float l = vertices_sizes / 100.;
 
-        return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
+        vec4 vertex = texture2D(uVertices, vec2(0,0));
+
+        return vec3(vertex.a, vertex.g, vertex.g);
+
+        // return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
     }
 
     void main() {

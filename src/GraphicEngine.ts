@@ -197,6 +197,8 @@ class GraphicEngine{
 
         // buffers: load them independently of current mode
         this.loadBuffers();
+        this.loadTextures();
+        this.loadMode("Triangle");
     }
 
     render(){
@@ -221,11 +223,11 @@ class GraphicEngine{
         this.mode = mode;
         
         this.shaderProgram = this.initShaderProgram()!;
+        this.gl.useProgram(this.shaderProgram);
         
         // locations: link buffers to shader program
         this.loadLocations();
 
-        this.gl.useProgram(this.shaderProgram);
     }
 
     initShaderProgram() {
@@ -305,20 +307,29 @@ class GraphicEngine{
         this.transparencyBuffer = this.gl.createBuffer()!;
     }
 
-    loadTextures() {    
-        function isPowerOf2(value: number) {
-            return (value & (value - 1)) == 0;
-        }
+    loadTextures() {
 
         this.verticesTexture = this.gl.createTexture()!;
         this.trianglesTexture = this.gl.createTexture()!;
 
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, 0, 0, 0,
-            this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array([]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 1, 1, 0, this.gl.RGB, this.gl.FLOAT,         
+            new Float32Array([1.,0,1.]));
+
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, 0, 0, 0,
-            this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array([]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 1, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
+            new Uint32Array([0,0,0]));
+        
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+
+        this.gl.activeTexture(this.gl.TEXTURE1);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+        
     }
 
     loadLocations(){
@@ -370,8 +381,12 @@ class GraphicEngine{
             this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor')!;
             this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, 'uMaterials')!;
             this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uLightSources')!;
+
+            //textures
             this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uVertices')!;
             this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTriangles')!;
+            this.gl.uniform1i(this.verticesLocation, 0);  // texture unit 0
+            this.gl.uniform1i(this.trianglesLocation, 1);  // texture unit 1
 
             // attributes locations
             this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
@@ -402,19 +417,6 @@ class GraphicEngine{
     }
 
     setTextures(vertices: number[], triangles: number[]){
-
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-
-        let width = vertices.length;
-        let height = 1;
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, width, height, 0,
-            this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array(vertices));
-        
-        width = triangles.length;
-        height = 1;
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB, width, height, 0,
-            this.gl.RGB, this.gl.UNSIGNED_BYTE, new Uint8Array(triangles));
     };
 
     updateVertices(offset: number, positions: number[], normals: number[], diffuseColor: number[], transparency: number[]) {
