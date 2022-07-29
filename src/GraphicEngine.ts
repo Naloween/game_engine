@@ -202,6 +202,7 @@ class GraphicEngine{
     }
 
     render(){
+
         this.gl.clearColor(0.0, 0.0, 0.0, 0.0);  // Clear to fully transparent
         this.gl.clearDepth(1.0);                 // Clear everything
         
@@ -313,12 +314,12 @@ class GraphicEngine{
         this.trianglesTexture = this.gl.createTexture()!;
 
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 1, 1, 0, this.gl.RGB, this.gl.FLOAT,         
-            new Float32Array([1.,0,1.]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 3, 1, 0, this.gl.RGB, this.gl.FLOAT,         
+            new Float32Array([1.,0.,0., 0.,1.,0., 0.,0.,1.]));
 
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 1, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
-            new Uint32Array([0,0,0]));
+            new Uint32Array([0,1,2]));
         
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
@@ -417,6 +418,13 @@ class GraphicEngine{
     }
 
     setTextures(vertices: number[], triangles: number[]){
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length, 1, 0, this.gl.RGB, this.gl.FLOAT,         
+            new Float32Array(vertices));
+
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, triangles.length, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
+            new Uint32Array(triangles));
     };
 
     updateVertices(offset: number, positions: number[], normals: number[], diffuseColor: number[], transparency: number[]) {

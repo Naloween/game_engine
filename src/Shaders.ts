@@ -49,17 +49,17 @@ const TriangleFragmentShaderSource = `
     }
 `;
 
-const RayTracingVertexShaderSource = `
+const RayTracingVertexShaderSource = `#version 300 es
     precision highp float;
 
-    attribute vec4 aVertexPosition;
+    in vec4 aVertexPosition;
 
     void main() {
         gl_Position = aVertexPosition;
     }
 `;
 
-const RayTracingFragmentShaderSource = `
+const RayTracingFragmentShaderSource = `#version 300 es
 
     // Precisions
 
@@ -93,7 +93,7 @@ const RayTracingFragmentShaderSource = `
     uniform Material uMaterials[10];
     uniform LightSource uLightSources[10];
     uniform sampler2D uVertices;
-    uniform sampler2D uTriangles;
+    uniform mediump usampler2D uTriangles;
 
     uniform vec3 uCameraPosition;
     uniform vec3 uCameraDirection;
@@ -107,9 +107,22 @@ const RayTracingFragmentShaderSource = `
 
     // Functions
 
+    float intersecTriangle(vec3 direction, uvec4 triangle);
     vec3 getPixelColor();
 
+    float intersecTriangle(vec3 direction, uvec4 triangle, ivec2 vertices_sizes){
+
+        vec4 vertexA = texture(uVertices, vec2( float(triangle.x)/float(vertices_sizes.x) , 0 ));
+        vec4 vertexB = texture(uVertices, vec2( float(triangle.y)/float(vertices_sizes.x) , 0 ));
+        vec4 vertexC = texture(uVertices, vec2( float(triangle.z)/float(vertices_sizes.x) , 0 ));
+
+        return vertexC.z;
+    }
+
     vec3 getPixelColor(){
+
+        // Direction of the ray
+
         float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;
         float dy = uCameraFov * ((uCameraHeight - gl_FragCoord.y) - uCameraHeight/2.) / uCameraWidth;
     
@@ -121,19 +134,40 @@ const RayTracingFragmentShaderSource = `
 
         direction = normalize(direction);
 
-        // float vertices_sizes = textureSize(uVertices, 0);
-        // float l = vertices_sizes / 100.;
+        // skybox_color defined by the direction
 
-        vec4 vertex = texture2D(uVertices, vec2(0,0));
+        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
 
-        return vec3(vertex.a, vertex.g, vertex.g);
+        // loop on triangles
+        ivec2 triangles_sizes = textureSize(uTriangles, 0);
+        ivec2 vertices_sizes = textureSize(uVertices, 0);
 
-        // return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
+        for (int triangle_index=0; triangle_index<triangles_sizes.x; triangle_index++){
+
+            // coords of texture between 0 and 1 (looped so 1.x = 0.x)
+            vec2 triangle_coords = vec2( float(triangle_index)/float(triangles_sizes.x) , 0 );
+            uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
+
+            float t = intersecTriangle(direction, triangle, vertices_sizes);
+
+            if (t == 1.){
+                return sky_box_color;
+            }
+        }
+
+        float l = float(triangles_sizes.x)/10.;
+
+        vec3 pixel_color = vec3(l, l, l);
+
+        return pixel_color;
+        // return sky_box_color;
     }
+
+    out vec4 fragColor;
 
     void main() {
         vec3 color = getPixelColor();
-        gl_FragColor = vec4(color ,1.);
+        fragColor = vec4(color ,1.);
     }
 `;
 
