@@ -215,8 +215,8 @@ class GameEngine{
     fps = 0;
     
     nb_chunk = 2;
-    chunk_size = 5;
-    side_length = 10;
+    chunk_size = 20;
+    side_length = 15;
     chunks: Chunk[] = [];
 
     constructor(view: HTMLCanvasElement, player: Player, landscape: Function){

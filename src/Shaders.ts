@@ -116,9 +116,11 @@ const RayTracingFragmentShaderSource = `#version 300 es
 
         vec3 direction = - direction_param;
 
-        vec3 v0 = -texture(uVertices, vec2( float(triangle.x)/float(vertices_sizes.x) , 0 )).xyz;
-        vec3 v1 = -texture(uVertices, vec2( float(triangle.y)/float(vertices_sizes.x) , 0 )).xyz;
-        vec3 v2 = -texture(uVertices, vec2( float(triangle.z)/float(vertices_sizes.x) , 0 )).xyz;
+        float vertices_width = float(vertices_sizes.x);
+
+        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;
+        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
+        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
 
         // Compute plane normale
         
@@ -174,10 +176,10 @@ const RayTracingFragmentShaderSource = `#version 300 es
 
         float t = -1.;
 
-        for (int triangle_index=0; triangle_index<triangles_sizes.x; triangle_index++){
+        for (int triangle_index=0; triangle_index < triangles_sizes.x; triangle_index++){
 
             // coords of texture between 0 and 1 (looped so 1.x = 0.x)
-            vec2 triangle_coords = vec2( float(triangle_index)/float(triangles_sizes.x) , 0 );
+            vec2 triangle_coords = vec2( (float(triangle_index)+0.5)/float(triangles_sizes.x) , 0 );
             uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
 
             float t2 = intersecTriangle(direction, triangle, vertices_sizes);
@@ -188,7 +190,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
         }
 
         if (t > 0.){
-            float l = 1. - t/100.;
+            float l = 1. - t/50.;
             return vec3(l, l, l);
         }
 

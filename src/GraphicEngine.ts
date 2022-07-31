@@ -414,6 +414,9 @@ class GraphicEngine{
     }
 
     setTextures(vertices: number[], triangles: number[]){
+        console.log(this.gl.MAX_TEXTURE_SIZE);
+        console.log(vertices.length/3);
+
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length/3, 1, 0, this.gl.RGB, this.gl.FLOAT,         
             new Float32Array(vertices));
