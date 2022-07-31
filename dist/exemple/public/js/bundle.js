@@ -8630,16 +8630,11 @@ var Player = /** @class */ (function () {
         this.update();
     }
     Player.prototype.update = function () {
-        this.u[0] = -Math.sin(this.phi) * Math.sin(this.teta);
-        this.u[1] = Math.sin(this.phi) * Math.cos(this.teta);
-        this.u[2] = Math.cos(this.phi);
-        this.uy[0] = Math.cos(this.phi) * Math.sin(this.teta);
-        this.uy[1] = -Math.cos(this.phi) * Math.cos(this.teta);
-        this.uy[2] = Math.sin(this.phi);
+        this.u = gl_matrix_1.vec3.fromValues(Math.sin(this.phi) * Math.cos(this.teta), Math.sin(this.phi) * Math.sin(this.teta), Math.cos(this.phi));
+        this.uy = gl_matrix_1.vec3.fromValues(-Math.cos(this.phi) * Math.cos(this.teta), -Math.cos(this.phi) * Math.sin(this.teta), Math.sin(this.phi));
         // ux produit vectoriel de u et uy
-        this.ux[0] = this.u[1] * this.uy[2] - this.u[2] * this.uy[1];
-        this.ux[1] = this.u[2] * this.uy[0] - this.u[0] * this.uy[2];
-        this.ux[2] = this.u[0] * this.uy[1] - this.u[1] * this.uy[0];
+        this.ux = gl_matrix_1.vec3.create();
+        gl_matrix_1.vec3.cross(this.ux, this.u, this.uy);
     };
     Player.prototype.move = function (dt) {
         // Mouse
@@ -8751,9 +8746,9 @@ var GameEngine = /** @class */ (function () {
         this.dt_fps = 0;
         this.previousTimeStamp = 0;
         this.fps = 0;
-        this.nb_chunk = 10;
-        this.chunk_size = 50;
-        this.side_length = 100;
+        this.nb_chunk = 2;
+        this.chunk_size = 5;
+        this.side_length = 10;
         this.chunks = [];
         this.player = player;
         this.view = view;
@@ -8886,6 +8881,7 @@ var GameEngine = /** @class */ (function () {
         }
         this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
         this.engine.nb_triangles_indexes = indexes.length;
+        this.engine.setTextures(positions, indexes);
     };
     GameEngine.prototype.update_world = function () {
         var dl = this.nb_chunk * this.chunk_size;
@@ -8909,14 +8905,14 @@ var GameEngine = /** @class */ (function () {
             this.previousTimeStamp = timestamp;
             // Player & camera
             //gravity
-            this.player.vitesse[2] -= 10 * dt;
+            // this.player.vitesse[2] -= 10 * dt;
             //update player position
             this.player.move(dt);
-            var h = this.landscape(this.player.position[0], this.player.position[1]);
-            if (this.player.position[2] < h + 2) {
-                this.player.position[2] = h + 2;
-                this.player.vitesse[2] = 0;
-            }
+            // const h = this.landscape(this.player.position[0], this.player.position[1]);
+            // if (this.player.position[2] < h + 2){
+            //     this.player.position[2] = h + 2;
+            //     this.player.vitesse[2] = 0;
+            // }
             //draw frame
             this.camera.position = gl_matrix_1.vec3.clone(this.player.position);
             this.camera.phi = this.player.phi;
@@ -8933,7 +8929,7 @@ var GameEngine = /** @class */ (function () {
                 fps.innerText = (1 / dt).toFixed(2) + "fps";
                 this.dt_fps = 0;
                 this.fps = 0;
-                this.update_world();
+                //this.update_world();
             }
             //position infos
             var element_position_x = document.getElementById("position_x");
@@ -9033,14 +9029,15 @@ var Camera = /** @class */ (function () {
     Camera.prototype.update = function () {
         gl_matrix_1.mat4.perspective(this.projectionMatrix, this.fov, this.aspect, this.zNear, this.zFar);
         gl_matrix_1.mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.phi, [1, 0, 0]);
-        gl_matrix_1.mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.teta, [0, 0, -1]);
+        gl_matrix_1.mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.teta - Math.PI / 2, [0, 0, -1]);
         gl_matrix_1.mat4.translate(this.projectionMatrix, this.projectionMatrix, this.position);
     };
     Camera.prototype.getRepere = function () {
         var u = gl_matrix_1.vec3.fromValues(Math.sin(this.phi) * Math.cos(this.teta), Math.sin(this.phi) * Math.sin(this.teta), Math.cos(this.phi));
         var uy = gl_matrix_1.vec3.fromValues(-Math.cos(this.phi) * Math.cos(this.teta), -Math.cos(this.phi) * Math.sin(this.teta), Math.sin(this.phi));
         // ux produit vectoriel de u et uy
-        var ux = gl_matrix_1.vec3.fromValues(u[1] * uy[2] - u[2] * uy[1], u[2] * uy[0] - u[0] * uy[2], u[0] * uy[1] - u[1] * uy[0]);
+        var ux = gl_matrix_1.vec3.create();
+        gl_matrix_1.vec3.cross(ux, u, uy);
         return [u, ux, uy];
     };
     return Camera;
@@ -9142,9 +9139,9 @@ var GraphicEngine = /** @class */ (function () {
         this.verticesTexture = this.gl.createTexture();
         this.trianglesTexture = this.gl.createTexture();
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([1., 0., 0., 0., 1., 0., 0., 0., 1.]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 4, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([0., 0., 0., 10., 0., 0., 0., 10., 0., 0., 0., 10.]));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 1, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array([0, 1, 2]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 2, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array([0, 1, 2, 0, 1, 3]));
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
@@ -9221,9 +9218,9 @@ var GraphicEngine = /** @class */ (function () {
     };
     GraphicEngine.prototype.setTextures = function (vertices, triangles) {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(vertices));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length / 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(vertices));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, triangles.length, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array(triangles));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, triangles.length / 3, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array(triangles));
     };
     ;
     GraphicEngine.prototype.updateVertices = function (offset, positions, normals, diffuseColor, transparency) {
@@ -9244,9 +9241,9 @@ var GraphicEngine = /** @class */ (function () {
         else if (this.mode == "Raytracing") {
             // Set the shader uniform camera direction
             var _a = camera.getRepere(), direction = _a[0], ux = _a[1], uy = _a[2];
-            this.gl.uniform3f(this.cameraDirectionLocation, -direction[0], -direction[1], -direction[2]);
-            this.gl.uniform3f(this.cameraDirectionXLocation, -ux[0], -ux[1], -ux[2]);
-            this.gl.uniform3f(this.cameraDirectionYLocation, -uy[0], -uy[1], -uy[2]);
+            this.gl.uniform3f(this.cameraDirectionLocation, direction[0], direction[1], direction[2]);
+            this.gl.uniform3f(this.cameraDirectionXLocation, ux[0], ux[1], ux[2]);
+            this.gl.uniform3f(this.cameraDirectionYLocation, uy[0], uy[1], uy[2]);
             this.gl.uniform1f(this.cameraFovLocation, camera.fov);
             this.gl.uniform1f(this.cameraWidthLocation, camera.width);
             this.gl.uniform1f(this.cameraHeightLocation, camera.height);
@@ -9279,7 +9276,8 @@ var TriangleFragmentShaderSource = "\n    precision highp float;\n\n    varying 
 exports.TriangleFragmentShaderSource = TriangleFragmentShaderSource;
 var RayTracingVertexShaderSource = "#version 300 es\n    precision highp float;\n\n    in vec4 aVertexPosition;\n\n    void main() {\n        gl_Position = aVertexPosition;\n    }\n";
 exports.RayTracingVertexShaderSource = RayTracingVertexShaderSource;
-var RayTracingFragmentShaderSource = "#version 300 es\n\n    // Precisions\n\n    precision mediump float;\n    precision mediump int;\n\n\n\n    // Structures\n\n    struct Material\n    {\n        vec3 metallic; //reflection irror like\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        float power;\n        vec3 color;\n        vec3 position;\n    };\n\n\n\n    // Uniforms\n\n    uniform Material uMaterials[10];\n    uniform LightSource uLightSources[10];\n    uniform sampler2D uVertices;\n    uniform mediump usampler2D uTriangles;\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n\n\n    // Functions\n\n    float intersecTriangle(vec3 direction, uvec4 triangle);\n    vec3 getPixelColor();\n\n    float intersecTriangle(vec3 direction, uvec4 triangle, ivec2 vertices_sizes){\n\n        vec4 vertexA = texture(uVertices, vec2( float(triangle.x)/float(vertices_sizes.x) , 0 ));\n        vec4 vertexB = texture(uVertices, vec2( float(triangle.y)/float(vertices_sizes.x) , 0 ));\n        vec4 vertexC = texture(uVertices, vec2( float(triangle.z)/float(vertices_sizes.x) , 0 ));\n\n        return vertexC.z;\n    }\n\n    vec3 getPixelColor(){\n\n        // Direction of the ray\n\n        float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;\n        float dy = uCameraFov * ((uCameraHeight - gl_FragCoord.y) - uCameraHeight/2.) / uCameraWidth;\n    \n        vec3 direction = vec3(\n            uCameraDirection.x - dx * uCameraDirectionX.x - dy * uCameraDirectionY.x,\n            uCameraDirection.y - dx * uCameraDirectionX.y - dy * uCameraDirectionY.y,\n            uCameraDirection.z - dx * uCameraDirectionX.z - dy * uCameraDirectionY.z\n        );\n\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n        // loop on triangles\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n\n        for (int triangle_index=0; triangle_index<triangles_sizes.x; triangle_index++){\n\n            // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n            vec2 triangle_coords = vec2( float(triangle_index)/float(triangles_sizes.x) , 0 );\n            uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n\n            float t = intersecTriangle(direction, triangle, vertices_sizes);\n\n            if (t == 1.){\n                return sky_box_color;\n            }\n        }\n\n        float l = float(triangles_sizes.x)/10.;\n\n        vec3 pixel_color = vec3(l, l, l);\n\n        return pixel_color;\n        // return sky_box_color;\n    }\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
+// TODO: Brocolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
+var RayTracingFragmentShaderSource = "#version 300 es\n\n    // Precisions\n\n    precision mediump float;\n    precision mediump int;\n\n\n\n    // Structures\n\n    struct Material\n    {\n        vec3 metallic; //reflection irror like\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        float power;\n        vec3 color;\n        vec3 position;\n    };\n\n\n\n    // Uniforms\n\n    uniform Material uMaterials[10];\n    uniform LightSource uLightSources[10];\n    uniform sampler2D uVertices;\n    uniform mediump usampler2D uTriangles;\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n\n\n    // Functions\n\n    float intersecTriangle(vec3 direction, uvec4 triangle);\n    vec3 getPixelColor();\n\n    float intersecTriangle(vec3 direction_param, uvec4 triangle, ivec2 vertices_sizes){\n\n        vec3 direction = - direction_param;\n\n        vec3 v0 = -texture(uVertices, vec2( float(triangle.x)/float(vertices_sizes.x) , 0 )).xyz;\n        vec3 v1 = -texture(uVertices, vec2( float(triangle.y)/float(vertices_sizes.x) , 0 )).xyz;\n        vec3 v2 = -texture(uVertices, vec2( float(triangle.z)/float(vertices_sizes.x) , 0 )).xyz;\n\n        // Compute plane normale\n        \n        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n        float area = length(normale); \n        normale /= area;\n\n        // check if ray parallel to triangle\n        // float NdotRayDirection = dot(normale, direction); \n        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n        //     return false;  //they are parallel so they don't intersect ! \n\n        // compute t\n        float t = dot(v0 - uCameraPosition, normale) / dot(direction, normale);\n        vec3 M = uCameraPosition + t * direction;\n\n        // inside / outside test V1\n        vec3 C;  //vector perpendicular to triangle's plane\n     \n        // edge 0\n        C = cross(M - v0, v1 - v0); \n        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n     \n        // edge 1\n        C = cross(M - v0, v2 - v0); \n        if (dot(C, normale) < 0.) return -1.;\n     \n        // edge 2\n        C = cross(M - v1, v2 - v1); \n        if (dot(C, normale) > 0.) return -1.; \n\n        return t;\n    }\n\n    vec3 getPixelColor(){\n\n        // Direction of the ray\n\n        float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;\n        float dy = uCameraFov * (uCameraHeight - gl_FragCoord.y - uCameraHeight/2.) / uCameraWidth;\n\n        vec3 direction =  (uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n        // loop on triangles\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n\n        float t = -1.;\n\n        for (int triangle_index=0; triangle_index<triangles_sizes.x; triangle_index++){\n\n            // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n            vec2 triangle_coords = vec2( float(triangle_index)/float(triangles_sizes.x) , 0 );\n            uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n\n            float t2 = intersecTriangle(direction, triangle, vertices_sizes);\n\n            if (t < 0. || (t2 > 0. && t2 < t)){\n                t = t2;\n            }\n        }\n\n        if (t > 0.){\n            float l = 1. - t/100.;\n            return vec3(l, l, l);\n        }\n\n        return sky_box_color;\n    }\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
 exports.RayTracingFragmentShaderSource = RayTracingFragmentShaderSource;
 
 },{}],16:[function(require,module,exports){

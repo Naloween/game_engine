@@ -109,7 +109,7 @@ class Camera{
         
         mat4.perspective(this.projectionMatrix, this.fov, this.aspect, this.zNear, this.zFar);
         mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.phi, [1, 0, 0]);
-        mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.teta, [0, 0, -1]);
+        mat4.rotate(this.projectionMatrix, this.projectionMatrix, this.teta - Math.PI/2, [0, 0, -1]);
         mat4.translate(this.projectionMatrix, this.projectionMatrix, this.position);
     }
 
@@ -128,11 +128,8 @@ class Camera{
         
         // ux produit vectoriel de u et uy
         
-        const ux = vec3.fromValues(
-            u[1] * uy[2] - u[2] * uy[1],
-            u[2] * uy[0] - u[0] * uy[2],
-            u[0] * uy[1] - u[1] * uy[0]
-        );
+        const ux = vec3.create();
+        vec3.cross(ux, u, uy);
         
         return [u, ux, uy];
     }
@@ -314,12 +311,12 @@ class GraphicEngine{
         this.trianglesTexture = this.gl.createTexture()!;
 
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 3, 1, 0, this.gl.RGB, this.gl.FLOAT,         
-            new Float32Array([1.,0.,0., 0.,1.,0., 0.,0.,1.]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 4, 1, 0, this.gl.RGB, this.gl.FLOAT,         
+            new Float32Array([0.,0.,0., 10.,0.,0., 0.,10.,0., 0., 0., 10.]));
 
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 1, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
-            new Uint32Array([0,1,2]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 2, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
+            new Uint32Array([0,1,2, 0,1,3]));
         
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
@@ -330,7 +327,6 @@ class GraphicEngine{
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-        
     }
 
     loadLocations(){
@@ -419,11 +415,11 @@ class GraphicEngine{
 
     setTextures(vertices: number[], triangles: number[]){
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length, 1, 0, this.gl.RGB, this.gl.FLOAT,         
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length/3, 1, 0, this.gl.RGB, this.gl.FLOAT,         
             new Float32Array(vertices));
 
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, triangles.length, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, triangles.length/3, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT,         
             new Uint32Array(triangles));
     };
 
@@ -450,9 +446,9 @@ class GraphicEngine{
 
             // Set the shader uniform camera direction
             const [direction, ux, uy] = camera.getRepere();
-            this.gl.uniform3f(this.cameraDirectionLocation, -direction[0], -direction[1], -direction[2]);
-            this.gl.uniform3f(this.cameraDirectionXLocation, -ux[0], -ux[1], -ux[2]);
-            this.gl.uniform3f(this.cameraDirectionYLocation, -uy[0], -uy[1], -uy[2]);
+            this.gl.uniform3f(this.cameraDirectionLocation, direction[0], direction[1], direction[2]);
+            this.gl.uniform3f(this.cameraDirectionXLocation, ux[0], ux[1], ux[2]);
+            this.gl.uniform3f(this.cameraDirectionYLocation, uy[0], uy[1], uy[2]);
 
             this.gl.uniform1f(this.cameraFovLocation, camera.fov);
             this.gl.uniform1f(this.cameraWidthLocation, camera.width);

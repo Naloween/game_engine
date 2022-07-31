@@ -47,19 +47,22 @@ class Player{
     }
 
     update(){        
-        this.u[0] = -Math.sin(this.phi) * Math.sin(this.teta);
-        this.u[1] = Math.sin(this.phi) * Math.cos(this.teta);
-        this.u[2] = Math.cos(this.phi);
-        
-        this.uy[0] = Math.cos(this.phi) * Math.sin(this.teta);
-        this.uy[1] = -Math.cos(this.phi) * Math.cos(this.teta);
-        this.uy[2] = Math.sin(this.phi);
+        this.u = vec3.fromValues(
+            Math.sin(this.phi) * Math.cos(this.teta),
+            Math.sin(this.phi) * Math.sin(this.teta),
+            Math.cos(this.phi)
+        );
+
+        this.uy = vec3.fromValues(
+            -Math.cos(this.phi) * Math.cos(this.teta),
+            -Math.cos(this.phi) * Math.sin(this.teta),
+            Math.sin(this.phi)
+        );
         
         // ux produit vectoriel de u et uy
         
-        this.ux[0] = this.u[1] * this.uy[2] - this.u[2] * this.uy[1];
-        this.ux[1] = this.u[2] * this.uy[0] - this.u[0] * this.uy[2];
-        this.ux[2] = this.u[0] * this.uy[1] - this.u[1] * this.uy[0];
+        this.ux = vec3.create();
+        vec3.cross(this.ux, this.u, this.uy);
     }
 
     move(dt: number){
@@ -211,9 +214,9 @@ class GameEngine{
     previousTimeStamp = 0;
     fps = 0;
     
-    nb_chunk = 10;
-    chunk_size = 50;
-    side_length = 100;
+    nb_chunk = 2;
+    chunk_size = 5;
+    side_length = 10;
     chunks: Chunk[] = [];
 
     constructor(view: HTMLCanvasElement, player: Player, landscape: Function){
@@ -359,6 +362,8 @@ class GameEngine{
 
         this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
         this.engine.nb_triangles_indexes = indexes.length;
+
+        this.engine.setTextures(positions, indexes)
     }
 
     update_world(){
@@ -388,16 +393,16 @@ class GameEngine{
             // Player & camera
 
             //gravity
-            this.player.vitesse[2] -= 10 * dt;
+            // this.player.vitesse[2] -= 10 * dt;
 
             //update player position
             this.player.move(dt);
 
-            const h = this.landscape(this.player.position[0], this.player.position[1]);
-            if (this.player.position[2] < h + 2){
-                this.player.position[2] = h + 2;
-                this.player.vitesse[2] = 0;
-            }
+            // const h = this.landscape(this.player.position[0], this.player.position[1]);
+            // if (this.player.position[2] < h + 2){
+            //     this.player.position[2] = h + 2;
+            //     this.player.vitesse[2] = 0;
+            // }
 
             //draw frame
             this.camera.position = vec3.clone(this.player.position);
@@ -421,7 +426,7 @@ class GameEngine{
                 this.dt_fps = 0;
                 this.fps = 0;
 
-                this.update_world();
+                //this.update_world();
             }
 
             //position infos

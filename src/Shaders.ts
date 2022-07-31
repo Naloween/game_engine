@@ -59,6 +59,8 @@ const RayTracingVertexShaderSource = `#version 300 es
     }
 `;
 
+
+// TODO: Brocolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
 const RayTracingFragmentShaderSource = `#version 300 es
 
     // Precisions
@@ -110,13 +112,45 @@ const RayTracingFragmentShaderSource = `#version 300 es
     float intersecTriangle(vec3 direction, uvec4 triangle);
     vec3 getPixelColor();
 
-    float intersecTriangle(vec3 direction, uvec4 triangle, ivec2 vertices_sizes){
+    float intersecTriangle(vec3 direction_param, uvec4 triangle, ivec2 vertices_sizes){
 
-        vec4 vertexA = texture(uVertices, vec2( float(triangle.x)/float(vertices_sizes.x) , 0 ));
-        vec4 vertexB = texture(uVertices, vec2( float(triangle.y)/float(vertices_sizes.x) , 0 ));
-        vec4 vertexC = texture(uVertices, vec2( float(triangle.z)/float(vertices_sizes.x) , 0 ));
+        vec3 direction = - direction_param;
 
-        return vertexC.z;
+        vec3 v0 = -texture(uVertices, vec2( float(triangle.x)/float(vertices_sizes.x) , 0 )).xyz;
+        vec3 v1 = -texture(uVertices, vec2( float(triangle.y)/float(vertices_sizes.x) , 0 )).xyz;
+        vec3 v2 = -texture(uVertices, vec2( float(triangle.z)/float(vertices_sizes.x) , 0 )).xyz;
+
+        // Compute plane normale
+        
+        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize
+        float area = length(normale); 
+        normale /= area;
+
+        // check if ray parallel to triangle
+        // float NdotRayDirection = dot(normale, direction); 
+        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 
+        //     return false;  //they are parallel so they don't intersect ! 
+
+        // compute t
+        float t = dot(v0 - uCameraPosition, normale) / dot(direction, normale);
+        vec3 M = uCameraPosition + t * direction;
+
+        // inside / outside test V1
+        vec3 C;  //vector perpendicular to triangle's plane
+     
+        // edge 0
+        C = cross(M - v0, v1 - v0); 
+        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge
+     
+        // edge 1
+        C = cross(M - v0, v2 - v0); 
+        if (dot(C, normale) < 0.) return -1.;
+     
+        // edge 2
+        C = cross(M - v1, v2 - v1); 
+        if (dot(C, normale) > 0.) return -1.; 
+
+        return t;
     }
 
     vec3 getPixelColor(){
@@ -124,13 +158,9 @@ const RayTracingFragmentShaderSource = `#version 300 es
         // Direction of the ray
 
         float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;
-        float dy = uCameraFov * ((uCameraHeight - gl_FragCoord.y) - uCameraHeight/2.) / uCameraWidth;
-    
-        vec3 direction = vec3(
-            uCameraDirection.x - dx * uCameraDirectionX.x - dy * uCameraDirectionY.x,
-            uCameraDirection.y - dx * uCameraDirectionX.y - dy * uCameraDirectionY.y,
-            uCameraDirection.z - dx * uCameraDirectionX.z - dy * uCameraDirectionY.z
-        );
+        float dy = uCameraFov * (uCameraHeight - gl_FragCoord.y - uCameraHeight/2.) / uCameraWidth;
+
+        vec3 direction =  (uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);
 
         direction = normalize(direction);
 
@@ -142,25 +172,27 @@ const RayTracingFragmentShaderSource = `#version 300 es
         ivec2 triangles_sizes = textureSize(uTriangles, 0);
         ivec2 vertices_sizes = textureSize(uVertices, 0);
 
+        float t = -1.;
+
         for (int triangle_index=0; triangle_index<triangles_sizes.x; triangle_index++){
 
             // coords of texture between 0 and 1 (looped so 1.x = 0.x)
             vec2 triangle_coords = vec2( float(triangle_index)/float(triangles_sizes.x) , 0 );
             uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
 
-            float t = intersecTriangle(direction, triangle, vertices_sizes);
+            float t2 = intersecTriangle(direction, triangle, vertices_sizes);
 
-            if (t == 1.){
-                return sky_box_color;
+            if (t < 0. || (t2 > 0. && t2 < t)){
+                t = t2;
             }
         }
 
-        float l = float(triangles_sizes.x)/10.;
+        if (t > 0.){
+            float l = 1. - t/100.;
+            return vec3(l, l, l);
+        }
 
-        vec3 pixel_color = vec3(l, l, l);
-
-        return pixel_color;
-        // return sky_box_color;
+        return sky_box_color;
     }
 
     out vec4 fragColor;
