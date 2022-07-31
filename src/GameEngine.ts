@@ -214,7 +214,7 @@ class GameEngine{
     previousTimeStamp = 0;
     fps = 0;
     
-    nb_chunk = 2;
+    nb_chunk = 1;
     chunk_size = 20;
     side_length = 15;
     chunks: Chunk[] = [];
@@ -238,7 +238,7 @@ class GameEngine{
 
         this.generate_world();
 
-        this.load_mode("Triangle");
+        this.load_mode("Raytracing");
         
         // Events
         this.load_events();
@@ -363,7 +363,7 @@ class GameEngine{
         this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
         this.engine.nb_triangles_indexes = indexes.length;
 
-        this.engine.setTextures(positions, indexes)
+        this.engine.setTextures(positions, indexes, [0, indexes.length/3, 0], [1.,0.,0., 0.,0.,0., 0.,0.,0., 1.,1.,1., 0.,0.,0.], [100.,100.,100., 0.,0.,0.])
     }
 
     update_world(){
