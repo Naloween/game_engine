@@ -218,7 +218,7 @@ class GameEngine {
   previousTimeStamp = 0;
   fps = 0;
 
-  nb_chunk = 3;
+  nb_chunk = 5;
   chunk_size = 50;
   side_length = 10;
   chunks: Chunk[] = [];
@@ -433,7 +433,11 @@ class GameEngine {
               chunk.position[1],
               chunk.position[2]
             ),
-            vec3.fromValues(this.chunk_size, this.chunk_size, this.chunk_size),
+            vec3.fromValues(
+              this.chunk_size,
+              this.chunk_size,
+              this.chunk_size * 2
+            ),
             chunk.positions,
             chunk.indexes,
             new Material()

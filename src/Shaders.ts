@@ -305,7 +305,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
                         hitting_object = true;
                         closest_object = object;
                         t = t_object;
-                        next_t = max_t - t + 0.1;
+                        next_t = max_t - t + 0.01;
                     }
                 }
     
@@ -360,7 +360,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
                     inLight = vec3(l, l, l);
                     break;
                 } else {
-                    inLight += vec3(1.,0.,0.);//+= sky_box_color;
+                    inLight += vec3(0.1,0.,0.);//+= sky_box_color;
 
                     cast_point = cast_point + next_t * direction;
                     distance += next_t;
