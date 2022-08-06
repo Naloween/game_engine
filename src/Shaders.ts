@@ -116,7 +116,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
 
     float rand(float seed);
     float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle);
-    float intersectBox(vec3 position, vec3 dimensions);
+    vec2 intersectBox(vec3 position, vec3 dimensions);
     bool inBox(vec3 position, vec3 box_position, vec3 dimensions);
     vec3 getPixelColor();
 
@@ -173,14 +173,10 @@ const RayTracingFragmentShaderSource = `#version 300 es
         && position.z < box_position.z && position.z > box_position.z - dimensions.z;
     }
 
-    float intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){
+    vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){
 
-        // if inside return 0.
-        if (inBox(cast_point, position, dimensions)){
-            return 0.;
-        }
-
-        float t = -1.;
+        float min_t = 10000000.0;
+        float max_t = -10000000.0;
 
         float t0 = (position.x - cast_point.x) / direction.x;
         vec3 M0 = cast_point + t0 * direction;
@@ -195,145 +191,190 @@ const RayTracingFragmentShaderSource = `#version 300 es
         float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;
         vec3 M5 = cast_point + t5 * direction;
 
-        if ((t<0. || (t0>0. && t0<t)) && (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z)){
-            t = t0;
+        if (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z){
+            if (t0 < min_t){
+                min_t = t0;
+            }
+            if (t0 > max_t){
+                max_t = t0;
+            }
         }
-        if ((t1>0. && (t<0. || t1<t)) && (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z)){
-            t = t1;
+        if (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z){
+            if (t1 < min_t){
+                min_t = t1;
+            }
+            if (t1 > max_t){
+                max_t = t1;
+            }
         }
-        if ((t2>0. && (t<0. || t2<t)) && (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z)){
-            t = t2;
+        if (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z){
+            if (t2 < min_t){
+                min_t = t2;
+            }
+            if (t2 > max_t){
+                max_t = t2;
+            }
         }
-        if ((t3>0. && (t<0. || t3<t)) && (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z)){
-            t = t3;
+        if (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z){
+            if (t3 < min_t){
+                min_t = t3;
+            }
+            if (t3 > max_t){
+                max_t = t3;
+            }
         }
-        if ((t4>0. && (t<0. || t4<t)) && (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x)){
-            t = t4;
+        if (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x){
+            if (t4 < min_t){
+                min_t = t4;
+            }
+            if (t4 > max_t){
+                max_t = t4;
+            }
         }
-        if ((t5>0. && (t<0. || t5<t)) && (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x)){
-            t = t5;
+        if (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x){
+            if (t5 < min_t){
+                min_t = t5;
+            }
+            if (t5 > max_t){
+                max_t = t5;
+            }
         }
 
-        return t;
+        return vec2(min_t, max_t);
     }
 
     vec3 getPixelColor(){
-
-        float rand_num =  rand(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y);
-
-        // Direction of the ray
-
-        float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;
-        float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;
-
-        vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);
-
-        direction = normalize(direction);
-
-        // skybox_color defined by the direction
-
-        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
-
-
+        // texture sizes
         ivec2 vertices_sizes = textureSize(uVertices, 0);
         ivec2 triangles_sizes = textureSize(uTriangles, 0);
         ivec2 objects_sizes = textureSize(uObjects, 0);
         ivec2 materials_sizes = textureSize(uMaterials, 0);
         ivec2 light_sources_sizes = textureSize(uLightSources, 0);
 
+        // Direction of the ray
 
-        // Next Step
-        float t = -1.;
+        // random number to offset ray
+        float rand_num =  0.;//rand(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y);
+
+        float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;
+        float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;
+
+        vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);
+        direction = normalize(direction);
+
+        // skybox_color defined by the direction
+        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
+
+
+        float diaphragme = 0.5;
+        float max_distance = 1000000000.0;
+        int step = 0;
+        float distance = 0.;
         Material current_material;
+        vec3 cast_point = uCameraPosition;
+        vec3 inLight = vec3(0.,0.,0.);
 
-        // loop on objects
-        bool hitting_box = false;
-        bool hitting_triangle = false;
-
-        float t_box = -1.;
-        float closest_obect_index = -1.;
-        Object closest_object;
-        
-        //find closest object
-        float object_index = 0.;
-        while (object_index < float(objects_sizes.x)){
-
-            vec4 object_indices = texture(uObjects, vec2( (object_index + 0.5) / float(objects_sizes.x) ));
-            vec4 object_position = texture(uObjects, vec2( (object_index + 1. + 0.5) / float(objects_sizes.x) ));
-            vec4 object_dimensions = texture(uObjects, vec2( (object_index + 2. + 0.5) / float(objects_sizes.x) ));
-            Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);
-
-            float t_box2 = intersectBox(uCameraPosition, direction, object.position, object.dimensions);
-
-            if (t_box2 >= 0. && (t_box<0. || t_box2 < t_box)){
-                t_box = t_box2;
-                closest_obect_index = object_index;
-                closest_object = object;
-                hitting_box = true;
-            }
-
-            object_index += 3.;
-
-        }
-
-        //Go in closest object
-        if (closest_obect_index >= 0.){
-            Object object = closest_object;
-
-            vec3 hitPoint = uCameraPosition + t_box * direction;
-
-            vec4 albedo = texture(uMaterials, vec2( (object.material_index + 0.5) / float(materials_sizes.x) ));
-            vec4 transparency = texture(uMaterials, vec2( (object.material_index + 1. + 0.5) / float(materials_sizes.x) ));
-            vec4 metallic = texture(uMaterials, vec2( (object.material_index + 2. + 0.5) / float(materials_sizes.x) ));
-            vec4 ior = texture(uMaterials, vec2( (object.material_index + 3. + 0.5) / float(materials_sizes.x) ));
-            vec4 emissive = texture(uMaterials, vec2( (object.material_index + 4. + 0.5) / float(materials_sizes.x) ));
+        // All ray steps
+        while (distance < max_distance){
+            // loop on objects
+    
+            float t = -1.; // distance to next intersection point
             
-            Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);
+            // Find closest object
 
-            // loop on triangles
-            float triangle_index = object.triangle_index;
-    
-            while (triangle_index < object.triangle_index + object.nb_triangles){
-    
-                // coords of texture between 0 and 1 (looped so 1.x = 0.x)
-                vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );
-                uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
-    
-                float t2 = intersecTriangle(hitPoint, direction, triangle, vertices_sizes);
+            Object closest_object;
+            bool hitting_object = false;
+            float object_index = 0.;
 
-                vec3 hitPointTriangle = hitPoint + t2 * direction;
-                bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);
-                if (is_in_box && (t2 > 0. && (t < 0. || t_box + t2 < t))){
-                    t = t_box + t2;
-                    current_material = material;
-                    hitting_triangle = true;
+            while (object_index < float(objects_sizes.x)){
+    
+                vec4 object_indices = texture(uObjects, vec2( (object_index + 0.5) / float(objects_sizes.x) ));
+                vec4 object_position = texture(uObjects, vec2( (object_index + 1. + 0.5) / float(objects_sizes.x) ));
+                vec4 object_dimensions = texture(uObjects, vec2( (object_index + 2. + 0.5) / float(objects_sizes.x) ));
+                Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);
+    
+                vec2 min_max_t = intersectBox(cast_point, direction, object.position, object.dimensions);
+                float min_t = min_max_t.x;
+                float max_t = min_max_t.y;
+    
+                if (min_t < max_t && max_t>0.){ // Si le rayon intersect la box
+                    float t_object = max(min_t, 0.); // Si min_t < 0. on est dans l'objet
+
+                    if (t<0. || t_object < t){
+                        hitting_object = true;
+                        closest_object = object;
+                        t = t_object;
+                    }
+                }
+    
+                object_index += 3.;
+    
+            }
+    
+            // Go in closest object and intersect its triangles
+
+            if (hitting_object){
+
+                // change step
+                cast_point = cast_point + t * direction;
+                distance += t;
+                t = -1.;
+    
+                vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));
+                vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));
+                vec4 metallic = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) ));
+                vec4 ior = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) ));
+                vec4 emissive = texture(uMaterials, vec2( (closest_object.material_index + 4. + 0.5) / float(materials_sizes.x) ));
+                
+                Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);
+    
+                // loop on triangles
+                bool hitting_triangle = false;
+                float triangle_index = closest_object.triangle_index;
+        
+                while (triangle_index < closest_object.triangle_index + closest_object.nb_triangles){
+        
+                    // coords of texture between 0 and 1 (looped so 1.x = 0.x)
+                    vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );
+                    uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
+        
+                    float t_triangle = intersecTriangle(cast_point, direction, triangle, vertices_sizes);
+    
+                    vec3 hitPointTriangle = cast_point + t_triangle * direction;
+                    bool is_in_box = inBox(hitPointTriangle, closest_object.position, closest_object.dimensions);
+                    if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){
+                        t = t_triangle;
+                        current_material = material;
+                        hitting_triangle = true;
+                    }
+    
+                    triangle_index++;
                 }
 
-                triangle_index++;
+                if (hitting_triangle){
+
+                    distance += t;
+                    cast_point = cast_point + t * direction;
+
+                    // depth color
+                    float l = 1. - distance/100.;
+                    inLight = vec3(l, l, l);
+
+                } else {
+                    inLight = vec3(1.,0.,0.);//+= sky_box_color;
+                }
+    
+            } else {
+                inLight = sky_box_color;
             }
 
+            break;
         }
 
-        // Si on a intersect qqchose
-        if (t >= 0.){
-
-            // return current_material.albedo;
-
-            // depth
-            float l = 1. - t/100.;
-            return vec3(l, l, l);
-        }
-
-        if (hitting_triangle){
-            return vec3(0.,0.,0.5);
-        }
-
-        if (hitting_box){
-            return vec3(0.5,0.,0.);
-        }
-
-        return sky_box_color;
+        return diaphragme * inLight;
     }
+
+
 
     out vec4 fragColor;
 
