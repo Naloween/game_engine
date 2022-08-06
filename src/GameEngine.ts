@@ -218,7 +218,7 @@ class GameEngine {
   previousTimeStamp = 0;
   fps = 0;
 
-  nb_chunk = 2;
+  nb_chunk = 3;
   chunk_size = 50;
   side_length = 10;
   chunks: Chunk[] = [];

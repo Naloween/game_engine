@@ -250,54 +250,66 @@ const RayTracingFragmentShaderSource = `#version 300 es
         bool hitting_box = false;
         bool hitting_triangle = false;
 
-        for (int object_index=0; object_index < objects_sizes.x; object_index+=3){
+        float t_box = -1.;
+        float closest_obect_index = -1.;
+        Object closest_object;
+        
+        //find closest object
+        float object_index = 0.;
+        while (object_index < float(objects_sizes.x)){
 
-            vec4 object_indices = texture(uObjects, vec2( (float(object_index) + 0.5) / float(objects_sizes.x) ));
-            vec4 object_position = texture(uObjects, vec2( (float(object_index) + 1. + 0.5) / float(objects_sizes.x) ));
-            vec4 object_dimensions = texture(uObjects, vec2( (float(object_index) + 2. + 0.5) / float(objects_sizes.x) ));
+            vec4 object_indices = texture(uObjects, vec2( (object_index + 0.5) / float(objects_sizes.x) ));
+            vec4 object_position = texture(uObjects, vec2( (object_index + 1. + 0.5) / float(objects_sizes.x) ));
+            vec4 object_dimensions = texture(uObjects, vec2( (object_index + 2. + 0.5) / float(objects_sizes.x) ));
             Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);
 
-            float t_box = intersectBox(uCameraPosition, direction, object.position, object.dimensions);
+            float t_box2 = intersectBox(uCameraPosition, direction, object.position, object.dimensions);
 
-            // if (t_box > 0. && (t<0. || t_box < t)){
-            //     t = t_box;
-            // }
-
-            if (t_box >= 0.){ // if we hit the bounding box of the object
-
+            if (t_box2 >= 0. && (t_box<0. || t_box2 < t_box)){
+                t_box = t_box2;
+                closest_obect_index = object_index;
+                closest_object = object;
                 hitting_box = true;
+            }
 
-                vec3 hitPoint = uCameraPosition + t_box * direction;
+            object_index += 3.;
 
-                vec4 albedo = texture(uMaterials, vec2( (object.material_index + 0.5) / float(materials_sizes.x) ));
-                vec4 transparency = texture(uMaterials, vec2( (object.material_index + 1. + 0.5) / float(materials_sizes.x) ));
-                vec4 metallic = texture(uMaterials, vec2( (object.material_index + 2. + 0.5) / float(materials_sizes.x) ));
-                vec4 ior = texture(uMaterials, vec2( (object.material_index + 3. + 0.5) / float(materials_sizes.x) ));
-                vec4 emissive = texture(uMaterials, vec2( (object.material_index + 4. + 0.5) / float(materials_sizes.x) ));
-                
-                Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);
+        }
+
+        //Go in closest object
+        if (closest_obect_index >= 0.){
+            Object object = closest_object;
+
+            vec3 hitPoint = uCameraPosition + t_box * direction;
+
+            vec4 albedo = texture(uMaterials, vec2( (object.material_index + 0.5) / float(materials_sizes.x) ));
+            vec4 transparency = texture(uMaterials, vec2( (object.material_index + 1. + 0.5) / float(materials_sizes.x) ));
+            vec4 metallic = texture(uMaterials, vec2( (object.material_index + 2. + 0.5) / float(materials_sizes.x) ));
+            vec4 ior = texture(uMaterials, vec2( (object.material_index + 3. + 0.5) / float(materials_sizes.x) ));
+            vec4 emissive = texture(uMaterials, vec2( (object.material_index + 4. + 0.5) / float(materials_sizes.x) ));
+            
+            Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);
+
+            // loop on triangles
+            float triangle_index = object.triangle_index;
     
-                // loop on triangles
-                float triangle_index = object.triangle_index;
-        
-                while (triangle_index < object.triangle_index + object.nb_triangles){
-        
-                    // coords of texture between 0 and 1 (looped so 1.x = 0.x)
-                    vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );
-                    uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
-        
-                    float t2 = intersecTriangle(hitPoint, direction, triangle, vertices_sizes);
+            while (triangle_index < object.triangle_index + object.nb_triangles){
+    
+                // coords of texture between 0 and 1 (looped so 1.x = 0.x)
+                vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );
+                uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
+    
+                float t2 = intersecTriangle(hitPoint, direction, triangle, vertices_sizes);
 
-                    vec3 hitPointTriangle = hitPoint + t2 * direction;
-                    bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);
-                    if (is_in_box && (t2 > 0. && (t < 0. || t_box + t2 < t))){
-                        t = t_box + t2;
-                        current_material = material;
-                        hitting_triangle = true;
-                    }
-
-                    triangle_index++;
+                vec3 hitPointTriangle = hitPoint + t2 * direction;
+                bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);
+                if (is_in_box && (t2 > 0. && (t < 0. || t_box + t2 < t))){
+                    t = t_box + t2;
+                    current_material = material;
+                    hitting_triangle = true;
                 }
+
+                triangle_index++;
             }
 
         }
