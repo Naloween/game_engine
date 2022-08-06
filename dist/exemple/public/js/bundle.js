@@ -8715,9 +8715,9 @@ var Chunk = /** @class */ (function () {
                     b = 0.5;
                 }
                 else if (z >= 20) {
-                    r = 1.;
-                    g = 1.;
-                    b = 1.;
+                    r = 1;
+                    g = 1;
+                    b = 1;
                 }
                 this.diffuseColors.push(r);
                 this.diffuseColors.push(g);
@@ -8746,10 +8746,12 @@ var GameEngine = /** @class */ (function () {
         this.dt_fps = 0;
         this.previousTimeStamp = 0;
         this.fps = 0;
-        this.nb_chunk = 1;
-        this.chunk_size = 20;
-        this.side_length = 15;
+        this.nb_chunk = 2;
+        this.chunk_size = 50;
+        this.side_length = 10;
         this.chunks = [];
+        this.objects = [];
+        this.lights = [];
         this.player = player;
         this.view = view;
         this.landscape = landscape;
@@ -8770,7 +8772,7 @@ var GameEngine = /** @class */ (function () {
         var TransformMatrix = gl_matrix_1.mat4.create();
         this.engine.setTransformVertices(TransformMatrix);
         this.engine.setCameraUniforms(this.camera);
-        this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1., 1., 1.]);
+        this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1, 1, 1]);
         this.engine.render();
     };
     GameEngine.prototype.load_events = function () {
@@ -8834,7 +8836,7 @@ var GameEngine = /** @class */ (function () {
                 _this.player.move_down = false;
             }
         });
-        document.addEventListener('pointerlockchange', (function () {
+        document.addEventListener("pointerlockchange", (function () {
             if (document.pointerLockElement === _this.view) {
                 if (!_this.player.rendering) {
                     _this.player.rendering = true;
@@ -8851,7 +8853,53 @@ var GameEngine = /** @class */ (function () {
             }
         }).bind(this), false);
     };
+    GameEngine.prototype.load_scene = function () {
+        var vertices = [];
+        var triangles = [];
+        var objects = [];
+        var materials = [];
+        var lights = [100, 100, 100, 0, 0, 0];
+        for (var _i = 0, _a = this.objects; _i < _a.length; _i++) {
+            var object = _a[_i];
+            objects.push(triangles.length / 3);
+            objects.push(object.triangles.length / 3);
+            objects.push(materials.length / 3);
+            objects.push(-object.position[0]);
+            objects.push(-object.position[1]);
+            objects.push(-object.position[2]);
+            objects.push(object.dimensions[0]);
+            objects.push(object.dimensions[1]);
+            objects.push(object.dimensions[2]);
+            for (var _b = 0, _c = object.vertices; _b < _c.length; _b++) {
+                var num = _c[_b];
+                vertices.push(num);
+            }
+            for (var _d = 0, _e = object.triangles; _d < _e.length; _d++) {
+                var num = _e[_d];
+                triangles.push(num);
+            }
+            //material
+            materials.push(object.material.albedo[0]);
+            materials.push(object.material.albedo[1]);
+            materials.push(object.material.albedo[2]);
+            materials.push(object.material.transparency[0]);
+            materials.push(object.material.transparency[1]);
+            materials.push(object.material.transparency[2]);
+            materials.push(object.material.metallic[0]);
+            materials.push(object.material.metallic[1]);
+            materials.push(object.material.metallic[2]);
+            materials.push(object.material.ior[0]);
+            materials.push(object.material.ior[1]);
+            materials.push(object.material.ior[2]);
+            materials.push(object.material.emmissive[0]);
+            materials.push(object.material.emmissive[1]);
+            materials.push(object.material.emmissive[2]);
+        }
+        console.log(this.objects);
+        this.engine.setTextures(vertices, triangles, objects, materials, lights);
+    };
     GameEngine.prototype.generate_world = function () {
+        this.objects = [];
         var positions = [];
         var normals = [];
         var diffuseColors = [];
@@ -8862,7 +8910,7 @@ var GameEngine = /** @class */ (function () {
             for (var j = 0; j < this.nb_chunk; j++) {
                 var chunk_x = i * this.chunk_size;
                 var chunk_y = j * this.chunk_size;
-                var chunk_z = 0;
+                var chunk_z = -10;
                 var side_length = this.side_length; //Math.max(Math.floor(this.side_length/(2**i)), 2);
                 var chunk = new Chunk(vertex_offset, [chunk_x, chunk_y, chunk_z], this.chunk_size, side_length);
                 this.chunks.push(chunk);
@@ -8877,18 +8925,23 @@ var GameEngine = /** @class */ (function () {
                     indexes.push(chunk.indexes[k]);
                 }
                 vertex_offset += side_length * side_length;
+                this.objects.push(new GraphicEngine_1.GraphicObject(gl_matrix_1.vec3.fromValues(chunk.position[0], chunk.position[1], chunk.position[2]), gl_matrix_1.vec3.fromValues(this.chunk_size, this.chunk_size, this.chunk_size), chunk.positions, chunk.indexes, new GraphicEngine_1.Material()));
             }
         }
         this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
         this.engine.nb_triangles_indexes = indexes.length;
-        this.engine.setTextures(positions, indexes, [0, indexes.length / 3, 0], [1., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 1., 0., 0., 0.], [100., 100., 100., 0., 0., 0.]);
+        this.load_scene();
     };
     GameEngine.prototype.update_world = function () {
         var dl = this.nb_chunk * this.chunk_size;
         for (var _i = 0, _a = this.chunks; _i < _a.length; _i++) {
             var chunk = _a[_i];
             var u = gl_matrix_1.vec3.create();
-            var position = [chunk.position[0] + chunk.size / 2, chunk.position[1] + chunk.size / 2, chunk.position[2] + chunk.size / 2];
+            var position = [
+                chunk.position[0] + chunk.size / 2,
+                chunk.position[1] + chunk.size / 2,
+                chunk.position[2] + chunk.size / 2,
+            ];
             gl_matrix_1.vec3.subtract(u, this.player.position, position);
             if (Math.round(u[0] / dl) != 0 || Math.round(u[1] / dl) != 0) {
                 chunk.position[0] += Math.round(u[0] / dl) * dl;
@@ -8959,7 +9012,7 @@ exports.GameEngine = GameEngine;
 // import * as vec3 from "/modules/glMatrix/src/vec3.js";
 // import * as vec2 from "/modules/glMatrix/src/vec2.js";
 exports.__esModule = true;
-exports.GraphicEngine = exports.Camera = exports.Material = exports.Light = void 0;
+exports.GraphicEngine = exports.Camera = exports.Material = exports.GraphicObject = exports.Light = void 0;
 var gl_matrix_1 = require("gl-matrix");
 var Shaders_1 = require("./Shaders");
 // Classes
@@ -9010,6 +9063,17 @@ var Material = /** @class */ (function () {
     return Material;
 }());
 exports.Material = Material;
+var GraphicObject = /** @class */ (function () {
+    function GraphicObject(position, dimensions, vertices, triangles, material) {
+        this.position = position;
+        this.dimensions = dimensions;
+        this.vertices = vertices;
+        this.triangles = triangles;
+        this.material = material;
+    }
+    return GraphicObject;
+}());
+exports.GraphicObject = GraphicObject;
 var Camera = /** @class */ (function () {
     function Camera(width, height, render_distance) {
         if (render_distance === void 0) { render_distance = 100; }
@@ -9021,7 +9085,7 @@ var Camera = /** @class */ (function () {
         this.aspect = this.width / this.height;
         this.zNear = 0.1;
         this.zFar = render_distance;
-        this.fov = 45 * Math.PI / 180; //in radiant
+        this.fov = (45 * Math.PI) / 180; //in radiant
         this.diaphragme = 1;
         this.projectionMatrix = gl_matrix_1.mat4.create();
         this.update();
@@ -9055,6 +9119,7 @@ var GraphicEngine = /** @class */ (function () {
         this.loadMode("Raytracing");
     }
     GraphicEngine.prototype.render = function () {
+        this.gl.uniform1f(this.timeLocation, Date.now() % (2 * Math.PI)); // sending current time to GPU
         this.gl.clearColor(0.0, 0.0, 0.0, 0.0); // Clear to fully transparent
         this.gl.clearDepth(1.0); // Clear everything
         // Clear the canvas before we start drawing on it.
@@ -9098,7 +9163,8 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.linkProgram(shaderProgram);
         // Si la création du programme shader a échoué, alerte
         if (!this.gl.getProgramParameter(shaderProgram, this.gl.LINK_STATUS)) {
-            alert("Impossible d'initialiser le programme shader : " + this.gl.getProgramInfoLog(shaderProgram));
+            alert("Impossible d'initialiser le programme shader : " +
+                this.gl.getProgramInfoLog(shaderProgram));
             return null;
         }
         return shaderProgram;
@@ -9112,7 +9178,8 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.compileShader(shader);
         // Vérifier s'il a été compilé avec succès
         if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
-            alert('An error occurred compiling the shaders: ' + this.gl.getShaderInfoLog(shader));
+            alert("An error occurred compiling the shaders: " +
+                this.gl.getShaderInfoLog(shader));
             this.gl.deleteShader(shader);
             return null;
         }
@@ -9122,12 +9189,7 @@ var GraphicEngine = /** @class */ (function () {
         this.trianglesCanvasBuffer = this.gl.createBuffer();
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array([
-            -1., -1., 0.,
-            -1., 1., 0.,
-            1., -1., 0.,
-            1., -1., 0.,
-            -1., 1., 0.,
-            1., 1., 0.,
+            -1, -1, 0, -1, 1, 0, 1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0,
         ]), this.gl.STATIC_DRAW);
         this.trianglesBuffer = this.gl.createBuffer();
         this.positionBuffer = this.gl.createBuffer();
@@ -9142,15 +9204,15 @@ var GraphicEngine = /** @class */ (function () {
         this.materialsTexture = this.gl.createTexture();
         this.lightSourcesTexture = this.gl.createTexture();
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 4, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([0., 0., 0., 10., 0., 0., 0., 10., 0., 0., 0., 10.]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 4, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 2, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array([0, 1, 2, 0, 1, 3]));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.objectsTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, 1, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array([0, 2, 0]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 1, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([0, 2, 0, 0, 0, 0, 1, 1, 1]));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.materialsTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 5, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([1., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 1., 0., 0., 0.]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 5, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0]));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.lightSourcesTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 2, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([100., 100., 100., 0., 0., 0.]));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, 2, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array([100, 100, 100, 0, 0, 0]));
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
@@ -9175,16 +9237,16 @@ var GraphicEngine = /** @class */ (function () {
     GraphicEngine.prototype.loadLocations = function () {
         if (this.mode == "Triangle") {
             // uniforms locations
-            this.projectionMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, 'uProjectionMatrix');
-            this.TransformMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTransformMatrix');
-            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraPosition');
-            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentTransparency');
-            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor');
+            this.projectionMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, "uProjectionMatrix");
+            this.TransformMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, "uTransformMatrix");
+            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraPosition");
+            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentTransparency");
+            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentDiffuseColor");
             // attributes locations
-            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
-            this.vertexNormalLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexNormal');
-            this.vertexDiffuseColorLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexDiffuseColor');
-            this.vertexTransparencyLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexTransparency');
+            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexPosition");
+            this.vertexNormalLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexNormal");
+            this.vertexDiffuseColorLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexDiffuseColor");
+            this.vertexTransparencyLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexTransparency");
             // set attribute location to corresponding buffer with iteration parameters
             this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
             this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
@@ -9201,30 +9263,31 @@ var GraphicEngine = /** @class */ (function () {
         }
         else if (this.mode == "Raytracing") {
             // uniforms locations
-            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraPosition');
-            this.cameraDirectionLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraDirection');
-            this.cameraDirectionXLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraDirectionX');
-            this.cameraDirectionYLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraDirectionY');
-            this.cameraFovLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraFov');
-            this.cameraWidthLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraWidth');
-            this.cameraHeightLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCameraHeight');
-            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentTransparency');
-            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, 'uCurrentDiffuseColor');
-            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, 'uMaterials');
-            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uLightSources');
+            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraPosition");
+            this.cameraDirectionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirection");
+            this.cameraDirectionXLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirectionX");
+            this.cameraDirectionYLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirectionY");
+            this.cameraFovLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraFov");
+            this.cameraWidthLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraWidth");
+            this.cameraHeightLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraHeight");
+            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentTransparency");
+            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentDiffuseColor");
+            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, "uMaterials");
+            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, "uLightSources");
+            this.timeLocation = this.gl.getUniformLocation(this.shaderProgram, "uTime");
             //textures
-            this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uVertices');
-            this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uTriangles');
-            this.objectsLocation = this.gl.getUniformLocation(this.shaderProgram, 'uObjects');
-            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, 'uMaterials');
-            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, 'uLightSources');
+            this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, "uVertices");
+            this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, "uTriangles");
+            this.objectsLocation = this.gl.getUniformLocation(this.shaderProgram, "uObjects");
+            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, "uMaterials");
+            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, "uLightSources");
             this.gl.uniform1i(this.verticesLocation, 0); // texture unit 0
             this.gl.uniform1i(this.trianglesLocation, 1); // texture unit 1
             this.gl.uniform1i(this.objectsLocation, 2); // texture unit 2
             this.gl.uniform1i(this.materialsLocation, 3); // texture unit 3
             this.gl.uniform1i(this.lightSourcesLocation, 4); // texture unit 4
             // attributes locations
-            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition');
+            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexPosition");
             // set attribute location to corresponding buffer with iteration parameters
             this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
             this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
@@ -9251,13 +9314,12 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, triangles.length / 3, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array(triangles));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.objectsTexture);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32UI, objects.length / 3, 1, 0, this.gl.RGB_INTEGER, this.gl.UNSIGNED_INT, new Uint32Array(objects));
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, objects.length / 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(objects));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.materialsTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, materials.length / 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(materials));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.lightSourcesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, light_sources.length / 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(light_sources));
     };
-    ;
     GraphicEngine.prototype.updateVertices = function (offset, positions, normals, diffuseColor, transparency) {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
         this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset * 4, new Float32Array(positions));
@@ -9311,8 +9373,9 @@ var TriangleFragmentShaderSource = "\n    precision highp float;\n\n    varying 
 exports.TriangleFragmentShaderSource = TriangleFragmentShaderSource;
 var RayTracingVertexShaderSource = "#version 300 es\n    precision highp float;\n\n    in vec4 aVertexPosition;\n\n    void main() {\n        gl_Position = aVertexPosition;\n    }\n";
 exports.RayTracingVertexShaderSource = RayTracingVertexShaderSource;
-// TODO: Brocolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
-var RayTracingFragmentShaderSource = "#version 300 es\n\n    // Precisions\n\n    precision mediump float;\n    precision mediump int;\n\n    // Structures\n\n    struct Object\n    {\n        uint triangle_index;\n        uint nb_triangles;\n        uint material_index;\n    };\n\n    struct Material\n    {\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 metallic; //reflection irror like\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        vec3 lightAmount;\n        vec3 position;\n    };\n\n    // Uniforms\n\n    uniform sampler2D uVertices; // position\n    uniform mediump usampler2D uTriangles; // vertices_index\n    uniform mediump usampler2D uObjects; // start_triangle_index, nb_triangles, material_index [, position, dimensions, transform_matrix (rotate, translate, scale)]\n    uniform sampler2D uMaterials; // Albedo, Transparency, Metallic, Ior, Emmissive\n    uniform sampler2D uLightSources; // LightAmount, Position\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n\n\n    // Functions\n\n    float intersecTriangle(vec3 direction, uvec4 triangle);\n    vec3 getPixelColor();\n\n    float intersecTriangle(vec3 direction_param, uvec4 triangle, ivec2 vertices_sizes){\n\n        vec3 direction = - direction_param;\n\n        float vertices_width = float(vertices_sizes.x);\n\n        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;\n        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n\n        // Compute plane normale\n        \n        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n        float area = length(normale); \n        normale /= area;\n\n        // check if ray parallel to triangle\n        // float NdotRayDirection = dot(normale, direction); \n        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n        //     return false;  //they are parallel so they don't intersect ! \n\n        // compute t\n        float t = dot(v0 - uCameraPosition, normale) / dot(direction, normale);\n        vec3 M = uCameraPosition + t * direction;\n\n        // inside / outside test V1\n        vec3 C;  //vector perpendicular to triangle's plane\n     \n        // edge 0\n        C = cross(M - v0, v1 - v0); \n        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n     \n        // edge 1\n        C = cross(M - v0, v2 - v0); \n        if (dot(C, normale) < 0.) return -1.;\n     \n        // edge 2\n        C = cross(M - v1, v2 - v1); \n        if (dot(C, normale) > 0.) return -1.; \n\n        return t;\n    }\n\n    vec3 getPixelColor(){\n\n        // Direction of the ray\n\n        float dx = uCameraFov * (gl_FragCoord.x - uCameraWidth/2.) / uCameraWidth;\n        float dy = uCameraFov * (uCameraHeight - gl_FragCoord.y - uCameraHeight/2.) / uCameraWidth;\n\n        vec3 direction =  (uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 objects_sizes = textureSize(uObjects, 0);\n        ivec2 materials_sizes = textureSize(uMaterials, 0);\n        ivec2 light_sources_sizes = textureSize(uLightSources, 0);\n\n\n        // Next Step\n        float t = -1.;\n        Material current_material;\n\n        // loop on objects\n\n\n        for (int object_index=0; object_index < objects_sizes.x; object_index++){\n\n            uvec4 object_data = texture(uObjects, vec2( (float(object_index)+0.5) / float(objects_sizes.x) ));\n            Object object = Object(object_data.x, object_data.y, object_data.z);\n\n            vec4 albedo = texture(uMaterials, vec2( (float(object.material_index) + 0.5) / float(materials_sizes.x) ));\n            vec4 transparency = texture(uMaterials, vec2( (float(object.material_index + uint(1)) + 0.5) / float(materials_sizes.x) ));\n            vec4 metallic = texture(uMaterials, vec2( (float(object.material_index + uint(2)) + 0.5) / float(materials_sizes.x) ));\n            vec4 ior = texture(uMaterials, vec2( (float(object.material_index + uint(3)) + 0.5) / float(materials_sizes.x) ));\n            vec4 emissive = texture(uMaterials, vec2( (float(object.material_index + uint(4)) + 0.5) / float(materials_sizes.x) ));\n            \n            Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);\n\n            // loop on triangles\n    \n            for (uint triangle_index = object.triangle_index; triangle_index < object.triangle_index + object.nb_triangles; triangle_index++){\n    \n                // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n                vec2 triangle_coords = vec2( (float(triangle_index)+0.5)/float(triangles_sizes.x) , 0 );\n                uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n    \n                float t2 = intersecTriangle(direction, triangle, vertices_sizes);\n    \n                if (t < 0. || (t2 > 0. && t2 < t)){\n                    t = t2;\n                    current_material = material;\n                }\n            }\n        }\n\n        // Si on a intersect qqchose\n        if (t > 0.){\n\n            return current_material.albedo;\n\n            // depth\n            float l = 1. - t/50.;\n            // return vec3(l, l, l);\n        }\n\n        return sky_box_color;\n    }\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
+// TODO set time uniform and implement random function that is different for each pixel and each time
+// TODO: Bricolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
+var RayTracingFragmentShaderSource = "#version 300 es\n\n    // Precisions\n\n    precision mediump float;\n    precision mediump int;\n\n    // Structures\n\n    struct Object\n    {\n        float triangle_index;\n        float nb_triangles;\n        float material_index;\n\n        vec3 position;\n        vec3 dimensions;\n    };\n\n    struct Material\n    {\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 metallic; //reflection irror like\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        vec3 lightAmount;\n        vec3 position;\n    };\n\n    // Uniforms\n\n    uniform sampler2D uVertices; // position\n    uniform mediump usampler2D uTriangles; // vertices_index\n    uniform sampler2D uObjects; // start_triangle_index, nb_triangles, material_index [, position, dimensions, transform_matrix (rotate, translate, scale)]\n    uniform sampler2D uMaterials; // Albedo, Transparency, Metallic, Ior, Emmissive\n    uniform sampler2D uLightSources; // LightAmount, Position\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n    uniform float uTime;\n\n    // Functions\n\n    float rand(float seed);\n    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle);\n    float intersectBox(vec3 position, vec3 dimensions);\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions);\n    vec3 getPixelColor();\n\n    float rand(float x){\n        return fract(sin(x)*424242.0);\n    }\n\n    float intersecTriangle(vec3 cast_point, vec3 direction_param, uvec4 triangle, ivec2 vertices_sizes){\n\n        vec3 direction = direction_param;\n\n        float vertices_width = float(vertices_sizes.x);\n\n        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;\n        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n\n        // Compute plane normale\n        \n        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n        float area = length(normale); \n        normale /= area;\n\n        // check if ray parallel to triangle\n        // float NdotRayDirection = dot(normale, direction); \n        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n        //     return false;  //they are parallel so they don't intersect ! \n\n        // compute t\n        float t = dot(v0 - cast_point, normale) / dot(direction, normale);\n        vec3 M = cast_point + t * direction;\n\n        // inside / outside test V1\n        vec3 C;  //vector perpendicular to triangle's plane\n     \n        // edge 0\n        C = cross(M - v0, v1 - v0); \n        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n     \n        // edge 1\n        C = cross(M - v0, v2 - v0); \n        if (dot(C, normale) < 0.) return -1.;\n     \n        // edge 2\n        C = cross(M - v1, v2 - v1); \n        if (dot(C, normale) > 0.) return -1.; \n\n        return t;\n    }\n\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions){\n        return position.x < box_position.x && position.x > box_position.x - dimensions.x\n        && position.y < box_position.y && position.y > box_position.y - dimensions.y\n        && position.z < box_position.z && position.z > box_position.z - dimensions.z;\n    }\n\n    float intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){\n\n        // if inside return 0.\n        if (inBox(cast_point, position, dimensions)){\n            return 0.;\n        }\n\n        float t = -1.;\n\n        float t0 = (position.x - cast_point.x) / direction.x;\n        vec3 M0 = cast_point + t0 * direction;\n        float t1 = (position.x - dimensions.x - cast_point.x) / direction.x;\n        vec3 M1 = cast_point + t1 * direction;\n        float t2 = (position.y - cast_point.y) / direction.y;\n        vec3 M2 = cast_point + t2 * direction;\n        float t3 = (position.y - dimensions.y - cast_point.y) / direction.y;\n        vec3 M3 = cast_point + t3 * direction;\n        float t4 = (position.z - cast_point.z) / direction.z;\n        vec3 M4 = cast_point + t4 * direction;\n        float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;\n        vec3 M5 = cast_point + t5 * direction;\n\n        if ((t<0. || (t0>0. && t0<t)) && (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z)){\n            t = t0;\n        }\n        if ((t1>0. && (t<0. || t1<t)) && (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z)){\n            t = t1;\n        }\n        if ((t2>0. && (t<0. || t2<t)) && (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z)){\n            t = t2;\n        }\n        if ((t3>0. && (t<0. || t3<t)) && (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z)){\n            t = t3;\n        }\n        if ((t4>0. && (t<0. || t4<t)) && (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x)){\n            t = t4;\n        }\n        if ((t5>0. && (t<0. || t5<t)) && (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x)){\n            t = t5;\n        }\n\n        return t;\n    }\n\n    vec3 getPixelColor(){\n\n        float rand_num =  rand(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y);\n\n        // Direction of the ray\n\n        float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;\n        float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;\n\n        vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 objects_sizes = textureSize(uObjects, 0);\n        ivec2 materials_sizes = textureSize(uMaterials, 0);\n        ivec2 light_sources_sizes = textureSize(uLightSources, 0);\n\n\n        // Next Step\n        float t = -1.;\n        Material current_material;\n\n        // loop on objects\n        bool hitting_box = false;\n        bool hitting_triangle = false;\n\n        for (int object_index=0; object_index < objects_sizes.x; object_index+=3){\n\n            vec4 object_indices = texture(uObjects, vec2( (float(object_index) + 0.5) / float(objects_sizes.x) ));\n            vec4 object_position = texture(uObjects, vec2( (float(object_index) + 1. + 0.5) / float(objects_sizes.x) ));\n            vec4 object_dimensions = texture(uObjects, vec2( (float(object_index) + 2. + 0.5) / float(objects_sizes.x) ));\n            Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);\n\n            float t_box = intersectBox(uCameraPosition, direction, object.position, object.dimensions);\n\n            // if (t_box > 0. && (t<0. || t_box < t)){\n            //     t = t_box;\n            // }\n\n            if (t_box >= 0.){ // if we hit the bounding box of the object\n\n                hitting_box = true;\n\n                vec3 hitPoint = uCameraPosition + t_box * direction;\n\n                vec4 albedo = texture(uMaterials, vec2( (object.material_index + 0.5) / float(materials_sizes.x) ));\n                vec4 transparency = texture(uMaterials, vec2( (object.material_index + 1. + 0.5) / float(materials_sizes.x) ));\n                vec4 metallic = texture(uMaterials, vec2( (object.material_index + 2. + 0.5) / float(materials_sizes.x) ));\n                vec4 ior = texture(uMaterials, vec2( (object.material_index + 3. + 0.5) / float(materials_sizes.x) ));\n                vec4 emissive = texture(uMaterials, vec2( (object.material_index + 4. + 0.5) / float(materials_sizes.x) ));\n                \n                Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);\n    \n                // loop on triangles\n                float triangle_index = object.triangle_index;\n        \n                while (triangle_index < object.triangle_index + object.nb_triangles){\n        \n                    // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n                    vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );\n                    uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n        \n                    float t2 = intersecTriangle(hitPoint, direction, triangle, vertices_sizes);\n\n                    vec3 hitPointTriangle = hitPoint + t2 * direction;\n                    bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);\n                    if (is_in_box && (t2 > 0. && (t < 0. || t_box + t2 < t))){\n                        t = t_box + t2;\n                        current_material = material;\n                        hitting_triangle = true;\n                    }\n\n                    triangle_index++;\n                }\n            }\n\n        }\n\n        // Si on a intersect qqchose\n        if (t >= 0.){\n\n            // return current_material.albedo;\n\n            // depth\n            float l = 1. - t/100.;\n            return vec3(l, l, l);\n        }\n\n        if (hitting_triangle){\n            return vec3(0.,0.,0.5);\n        }\n\n        if (hitting_box){\n            return vec3(0.5,0.,0.);\n        }\n\n        return sky_box_color;\n    }\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
 exports.RayTracingFragmentShaderSource = RayTracingFragmentShaderSource;
 
 },{}],16:[function(require,module,exports){
