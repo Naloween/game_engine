@@ -279,6 +279,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
             // loop on objects
     
             float t = -1.; // distance to next intersection point
+            float next_t = -1.;
             
             // Find closest object
 
@@ -304,6 +305,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
                         hitting_object = true;
                         closest_object = object;
                         t = t_object;
+                        next_t = max_t - t + 0.1;
                     }
                 }
     
@@ -352,23 +354,23 @@ const RayTracingFragmentShaderSource = `#version 300 es
                 }
 
                 if (hitting_triangle){
-
                     distance += t;
-                    cast_point = cast_point + t * direction;
-
                     // depth color
-                    float l = 1. - distance/100.;
+                    float l = 1. - distance/300.;
                     inLight = vec3(l, l, l);
-
+                    break;
                 } else {
-                    inLight = vec3(1.,0.,0.);//+= sky_box_color;
+                    inLight += vec3(1.,0.,0.);//+= sky_box_color;
+
+                    cast_point = cast_point + next_t * direction;
+                    distance += next_t;
+                    // break;
                 }
     
             } else {
-                inLight = sky_box_color;
+                inLight += sky_box_color;
+                break;
             }
-
-            break;
         }
 
         return diaphragme * inLight;
