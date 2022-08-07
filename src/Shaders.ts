@@ -60,11 +60,12 @@ const RayTracingVertexShaderSource = `#version 300 es
 // TODO set time uniform and implement random function that is different for each pixel and each time
 
 // TODO: Bricolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
-const RayTracingFragmentShaderSource = `#version 300 es
+const RayTracingFragmentShaderSource =
+  `#version 300 es
 
     // Precisions
 
-    precision mediump float;
+    precision highp float;
     precision mediump int;
 
     // Structures
@@ -111,6 +112,8 @@ const RayTracingFragmentShaderSource = `#version 300 es
     uniform float uCameraHeight;
 
     uniform float uTime;
+    ` +
+  `
 
     // Functions
 
@@ -121,12 +124,11 @@ const RayTracingFragmentShaderSource = `#version 300 es
     vec3 getPixelColor();
 
     float rand(float x){
-        return fract(sin(x)*424242.0);
+        return 0.;
+        return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
     }
 
-    float intersecTriangle(vec3 cast_point, vec3 direction_param, uvec4 triangle, ivec2 vertices_sizes){
-
-        vec3 direction = direction_param;
+    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle, ivec2 vertices_sizes){
 
         float vertices_width = float(vertices_sizes.x);
 
@@ -242,6 +244,8 @@ const RayTracingFragmentShaderSource = `#version 300 es
 
         return vec2(min_t, max_t);
     }
+    ` +
+  `
 
     vec3 getPixelColor(){
         // texture sizes
@@ -254,7 +258,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
         // Direction of the ray
 
         // random number to offset ray
-        float rand_num =  0.;//rand(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y);
+        float rand_num =  rand(-1.);
 
         float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;
         float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;
@@ -269,13 +273,15 @@ const RayTracingFragmentShaderSource = `#version 300 es
         float diaphragme = 0.5;
         float max_distance = 1000000000.0;
         int step = 0;
+        int max_step = 20;
         float distance = 0.;
         Material current_material;
         vec3 cast_point = uCameraPosition;
         vec3 inLight = vec3(0.,0.,0.);
+        float ray_percentage = 1.;
 
         // All ray steps
-        while (distance < max_distance){
+        while (distance < max_distance && step < max_step && ray_percentage > 0.1){
             // loop on objects
     
             float t = -1.; // distance to next intersection point
@@ -321,6 +327,8 @@ const RayTracingFragmentShaderSource = `#version 300 es
                 cast_point = cast_point + t * direction;
                 distance += t;
                 t = -1.;
+
+                // Material
     
                 vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));
                 vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));
@@ -333,6 +341,7 @@ const RayTracingFragmentShaderSource = `#version 300 es
                 // loop on triangles
                 bool hitting_triangle = false;
                 float triangle_index = closest_object.triangle_index;
+                vec3 normale;
         
                 while (triangle_index < closest_object.triangle_index + closest_object.nb_triangles){
         
@@ -348,32 +357,68 @@ const RayTracingFragmentShaderSource = `#version 300 es
                         t = t_triangle;
                         current_material = material;
                         hitting_triangle = true;
+
+                        // Get normale
+                        float vertices_width = float(vertices_sizes.x);
+                        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;
+                        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
+                        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
+                        
+                        normale = cross(v1 - v0, v2 - v0);
+                        normale = normalize(normale);
+                        // float area = length(normale); 
+                        // normale /= area;
                     }
     
                     triangle_index++;
                 }
 
+                float box_transparency = 0.997;
+
                 if (hitting_triangle){
+
+                    // box color (transparent)
+                    float light_throug = pow(box_transparency, t);
+                    inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);
+
+                    // increment cast point
+                    ray_percentage *= light_throug;
+                    cast_point = cast_point + t * direction;
                     distance += t;
-                    // depth color
-                    float l = 1. - distance/300.;
-                    inLight = vec3(l, l, l);
-                    break;
+                    
+                    // Reflection
+                    float reflection_coef = 0.5;
+                    if (rand(float(step)) < reflection_coef){
+                        direction -= 2. * dot(direction, normale) * normale;
+                        direction = normalize(direction);
+                        cast_point = cast_point + 0.01 * direction;
+                    } else {
+                        // triangle color
+                        float l = 1. - distance/300.;
+                        inLight += ray_percentage*vec3(0., l/2., l);
+                        break;
+                    }
+
                 } else {
-                    inLight += vec3(0.1,0.,0.);//+= sky_box_color;
+                    float light_throug = pow(box_transparency, next_t);
+                    inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);
+                    ray_percentage *= light_throug;
 
                     cast_point = cast_point + next_t * direction;
                     distance += next_t;
-                    // break;
                 }
     
             } else {
-                inLight += sky_box_color;
+                inLight += ray_percentage*sky_box_color;
+                // inLight = vec3(ray_percentage);
                 break;
             }
+
+            step++;
         }
 
-        return diaphragme * inLight;
+        return vec3(float(step)/float(max_step));
+        // return diaphragme * inLight;
     }
 
 
