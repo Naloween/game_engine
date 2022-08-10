@@ -8126,478 +8126,6 @@ var forEach = function () {
 exports.forEach = forEach;
 },{"./common.js":1}],12:[function(require,module,exports){
 "use strict";
-/*
- * A fast javascript implementation of simplex noise by Jonas Wagner
-
-Based on a speed-improved simplex noise algorithm for 2D, 3D and 4D in Java.
-Which is based on example code by Stefan Gustavson (stegu@itn.liu.se).
-With Optimisations by Peter Eastman (peastman@drizzle.stanford.edu).
-Better rank ordering method by Stefan Gustavson in 2012.
-
- Copyright (c) 2022 Jonas Wagner
-
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
- */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildPermutationTable = exports.createNoise4D = exports.createNoise3D = exports.createNoise2D = void 0;
-// these #__PURE__ comments help uglifyjs with dead code removal
-// 
-const F2 = /*#__PURE__*/ 0.5 * (Math.sqrt(3.0) - 1.0);
-const G2 = /*#__PURE__*/ (3.0 - Math.sqrt(3.0)) / 6.0;
-const F3 = 1.0 / 3.0;
-const G3 = 1.0 / 6.0;
-const F4 = /*#__PURE__*/ (Math.sqrt(5.0) - 1.0) / 4.0;
-const G4 = /*#__PURE__*/ (5.0 - Math.sqrt(5.0)) / 20.0;
-// I'm really not sure why this | 0 (basically a coercion to int)
-// is making this faster but I get ~5 million ops/sec more on the
-// benchmarks across the board or a ~10% speedup.
-const fastFloor = (x) => Math.floor(x) | 0;
-const grad2 = /*#__PURE__*/ new Float64Array([1, 1,
-    -1, 1,
-    1, -1,
-    -1, -1,
-    1, 0,
-    -1, 0,
-    1, 0,
-    -1, 0,
-    0, 1,
-    0, -1,
-    0, 1,
-    0, -1]);
-// double seems to be faster than single or int's
-// probably because most operations are in double precision
-const grad3 = /*#__PURE__*/ new Float64Array([1, 1, 0,
-    -1, 1, 0,
-    1, -1, 0,
-    -1, -1, 0,
-    1, 0, 1,
-    -1, 0, 1,
-    1, 0, -1,
-    -1, 0, -1,
-    0, 1, 1,
-    0, -1, 1,
-    0, 1, -1,
-    0, -1, -1]);
-// double is a bit quicker here as well
-const grad4 = /*#__PURE__*/ new Float64Array([0, 1, 1, 1, 0, 1, 1, -1, 0, 1, -1, 1, 0, 1, -1, -1,
-    0, -1, 1, 1, 0, -1, 1, -1, 0, -1, -1, 1, 0, -1, -1, -1,
-    1, 0, 1, 1, 1, 0, 1, -1, 1, 0, -1, 1, 1, 0, -1, -1,
-    -1, 0, 1, 1, -1, 0, 1, -1, -1, 0, -1, 1, -1, 0, -1, -1,
-    1, 1, 0, 1, 1, 1, 0, -1, 1, -1, 0, 1, 1, -1, 0, -1,
-    -1, 1, 0, 1, -1, 1, 0, -1, -1, -1, 0, 1, -1, -1, 0, -1,
-    1, 1, 1, 0, 1, 1, -1, 0, 1, -1, 1, 0, 1, -1, -1, 0,
-    -1, 1, 1, 0, -1, 1, -1, 0, -1, -1, 1, 0, -1, -1, -1, 0]);
-/**
- * Creates a 2D noise function
- * @param random the random function that will be used to build the permutation table
- * @returns {NoiseFunction2D}
- */
-function createNoise2D(random = Math.random) {
-    const perm = buildPermutationTable(random);
-    // precalculating this yields a little ~3% performance improvement.
-    const permGrad2x = new Float64Array(perm).map(v => grad2[(v % 12) * 2]);
-    const permGrad2y = new Float64Array(perm).map(v => grad2[(v % 12) * 2 + 1]);
-    return function noise2D(x, y) {
-        // if(!isFinite(x) || !isFinite(y)) return 0;
-        let n0 = 0; // Noise contributions from the three corners
-        let n1 = 0;
-        let n2 = 0;
-        // Skew the input space to determine which simplex cell we're in
-        const s = (x + y) * F2; // Hairy factor for 2D
-        const i = fastFloor(x + s);
-        const j = fastFloor(y + s);
-        const t = (i + j) * G2;
-        const X0 = i - t; // Unskew the cell origin back to (x,y) space
-        const Y0 = j - t;
-        const x0 = x - X0; // The x,y distances from the cell origin
-        const y0 = y - Y0;
-        // For the 2D case, the simplex shape is an equilateral triangle.
-        // Determine which simplex we are in.
-        let i1, j1; // Offsets for second (middle) corner of simplex in (i,j) coords
-        if (x0 > y0) {
-            i1 = 1;
-            j1 = 0;
-        } // lower triangle, XY order: (0,0)->(1,0)->(1,1)
-        else {
-            i1 = 0;
-            j1 = 1;
-        } // upper triangle, YX order: (0,0)->(0,1)->(1,1)
-        // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
-        // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
-        // c = (3-sqrt(3))/6
-        const x1 = x0 - i1 + G2; // Offsets for middle corner in (x,y) unskewed coords
-        const y1 = y0 - j1 + G2;
-        const x2 = x0 - 1.0 + 2.0 * G2; // Offsets for last corner in (x,y) unskewed coords
-        const y2 = y0 - 1.0 + 2.0 * G2;
-        // Work out the hashed gradient indices of the three simplex corners
-        const ii = i & 255;
-        const jj = j & 255;
-        // Calculate the contribution from the three corners
-        let t0 = 0.5 - x0 * x0 - y0 * y0;
-        if (t0 >= 0) {
-            const gi0 = ii + perm[jj];
-            const g0x = permGrad2x[gi0];
-            const g0y = permGrad2y[gi0];
-            t0 *= t0;
-            // n0 = t0 * t0 * (grad2[gi0] * x0 + grad2[gi0 + 1] * y0); // (x,y) of grad3 used for 2D gradient
-            n0 = t0 * t0 * (g0x * x0 + g0y * y0);
-        }
-        let t1 = 0.5 - x1 * x1 - y1 * y1;
-        if (t1 >= 0) {
-            const gi1 = ii + i1 + perm[jj + j1];
-            const g1x = permGrad2x[gi1];
-            const g1y = permGrad2y[gi1];
-            t1 *= t1;
-            // n1 = t1 * t1 * (grad2[gi1] * x1 + grad2[gi1 + 1] * y1);
-            n1 = t1 * t1 * (g1x * x1 + g1y * y1);
-        }
-        let t2 = 0.5 - x2 * x2 - y2 * y2;
-        if (t2 >= 0) {
-            const gi2 = ii + 1 + perm[jj + 1];
-            const g2x = permGrad2x[gi2];
-            const g2y = permGrad2y[gi2];
-            t2 *= t2;
-            // n2 = t2 * t2 * (grad2[gi2] * x2 + grad2[gi2 + 1] * y2);
-            n2 = t2 * t2 * (g2x * x2 + g2y * y2);
-        }
-        // Add contributions from each corner to get the final noise value.
-        // The result is scaled to return values in the interval [-1,1].
-        return 70.0 * (n0 + n1 + n2);
-    };
-}
-exports.createNoise2D = createNoise2D;
-/**
- * Creates a 3D noise function
- * @param random the random function that will be used to build the permutation table
- * @returns {NoiseFunction3D}
- */
-function createNoise3D(random = Math.random) {
-    const perm = buildPermutationTable(random);
-    // precalculating these seems to yield a speedup of over 15%
-    const permGrad3x = new Float64Array(perm).map(v => grad3[(v % 12) * 3]);
-    const permGrad3y = new Float64Array(perm).map(v => grad3[(v % 12) * 3 + 1]);
-    const permGrad3z = new Float64Array(perm).map(v => grad3[(v % 12) * 3 + 2]);
-    return function noise3D(x, y, z) {
-        let n0, n1, n2, n3; // Noise contributions from the four corners
-        // Skew the input space to determine which simplex cell we're in
-        const s = (x + y + z) * F3; // Very nice and simple skew factor for 3D
-        const i = fastFloor(x + s);
-        const j = fastFloor(y + s);
-        const k = fastFloor(z + s);
-        const t = (i + j + k) * G3;
-        const X0 = i - t; // Unskew the cell origin back to (x,y,z) space
-        const Y0 = j - t;
-        const Z0 = k - t;
-        const x0 = x - X0; // The x,y,z distances from the cell origin
-        const y0 = y - Y0;
-        const z0 = z - Z0;
-        // For the 3D case, the simplex shape is a slightly irregular tetrahedron.
-        // Determine which simplex we are in.
-        let i1, j1, k1; // Offsets for second corner of simplex in (i,j,k) coords
-        let i2, j2, k2; // Offsets for third corner of simplex in (i,j,k) coords
-        if (x0 >= y0) {
-            if (y0 >= z0) {
-                i1 = 1;
-                j1 = 0;
-                k1 = 0;
-                i2 = 1;
-                j2 = 1;
-                k2 = 0;
-            } // X Y Z order
-            else if (x0 >= z0) {
-                i1 = 1;
-                j1 = 0;
-                k1 = 0;
-                i2 = 1;
-                j2 = 0;
-                k2 = 1;
-            } // X Z Y order
-            else {
-                i1 = 0;
-                j1 = 0;
-                k1 = 1;
-                i2 = 1;
-                j2 = 0;
-                k2 = 1;
-            } // Z X Y order
-        }
-        else { // x0<y0
-            if (y0 < z0) {
-                i1 = 0;
-                j1 = 0;
-                k1 = 1;
-                i2 = 0;
-                j2 = 1;
-                k2 = 1;
-            } // Z Y X order
-            else if (x0 < z0) {
-                i1 = 0;
-                j1 = 1;
-                k1 = 0;
-                i2 = 0;
-                j2 = 1;
-                k2 = 1;
-            } // Y Z X order
-            else {
-                i1 = 0;
-                j1 = 1;
-                k1 = 0;
-                i2 = 1;
-                j2 = 1;
-                k2 = 0;
-            } // Y X Z order
-        }
-        // A step of (1,0,0) in (i,j,k) means a step of (1-c,-c,-c) in (x,y,z),
-        // a step of (0,1,0) in (i,j,k) means a step of (-c,1-c,-c) in (x,y,z), and
-        // a step of (0,0,1) in (i,j,k) means a step of (-c,-c,1-c) in (x,y,z), where
-        // c = 1/6.
-        const x1 = x0 - i1 + G3; // Offsets for second corner in (x,y,z) coords
-        const y1 = y0 - j1 + G3;
-        const z1 = z0 - k1 + G3;
-        const x2 = x0 - i2 + 2.0 * G3; // Offsets for third corner in (x,y,z) coords
-        const y2 = y0 - j2 + 2.0 * G3;
-        const z2 = z0 - k2 + 2.0 * G3;
-        const x3 = x0 - 1.0 + 3.0 * G3; // Offsets for last corner in (x,y,z) coords
-        const y3 = y0 - 1.0 + 3.0 * G3;
-        const z3 = z0 - 1.0 + 3.0 * G3;
-        // Work out the hashed gradient indices of the four simplex corners
-        const ii = i & 255;
-        const jj = j & 255;
-        const kk = k & 255;
-        // Calculate the contribution from the four corners
-        let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0;
-        if (t0 < 0)
-            n0 = 0.0;
-        else {
-            const gi0 = ii + perm[jj + perm[kk]];
-            t0 *= t0;
-            n0 = t0 * t0 * (permGrad3x[gi0] * x0 + permGrad3y[gi0] * y0 + permGrad3z[gi0] * z0);
-        }
-        let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1;
-        if (t1 < 0)
-            n1 = 0.0;
-        else {
-            const gi1 = ii + i1 + perm[jj + j1 + perm[kk + k1]];
-            t1 *= t1;
-            n1 = t1 * t1 * (permGrad3x[gi1] * x1 + permGrad3y[gi1] * y1 + permGrad3z[gi1] * z1);
-        }
-        let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2;
-        if (t2 < 0)
-            n2 = 0.0;
-        else {
-            const gi2 = ii + i2 + perm[jj + j2 + perm[kk + k2]];
-            t2 *= t2;
-            n2 = t2 * t2 * (permGrad3x[gi2] * x2 + permGrad3y[gi2] * y2 + permGrad3z[gi2] * z2);
-        }
-        let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3;
-        if (t3 < 0)
-            n3 = 0.0;
-        else {
-            const gi3 = ii + 1 + perm[jj + 1 + perm[kk + 1]];
-            t3 *= t3;
-            n3 = t3 * t3 * (permGrad3x[gi3] * x3 + permGrad3y[gi3] * y3 + permGrad3z[gi3] * z3);
-        }
-        // Add contributions from each corner to get the final noise value.
-        // The result is scaled to stay just inside [-1,1]
-        return 32.0 * (n0 + n1 + n2 + n3);
-    };
-}
-exports.createNoise3D = createNoise3D;
-/**
- * Creates a 4D noise function
- * @param random the random function that will be used to build the permutation table
- * @returns {NoiseFunction3D}
- */
-function createNoise4D(random = Math.random) {
-    const perm = buildPermutationTable(random);
-    // precalculating these leads to a ~10% speedup
-    const permGrad4x = new Float64Array(perm).map(v => grad4[(v % 32) * 4]);
-    const permGrad4y = new Float64Array(perm).map(v => grad4[(v % 32) * 4 + 1]);
-    const permGrad4z = new Float64Array(perm).map(v => grad4[(v % 32) * 4 + 2]);
-    const permGrad4w = new Float64Array(perm).map(v => grad4[(v % 32) * 4 + 3]);
-    return function noise4D(x, y, z, w) {
-        let n0, n1, n2, n3, n4; // Noise contributions from the five corners
-        // Skew the (x,y,z,w) space to determine which cell of 24 simplices we're in
-        const s = (x + y + z + w) * F4; // Factor for 4D skewing
-        const i = fastFloor(x + s);
-        const j = fastFloor(y + s);
-        const k = fastFloor(z + s);
-        const l = fastFloor(w + s);
-        const t = (i + j + k + l) * G4; // Factor for 4D unskewing
-        const X0 = i - t; // Unskew the cell origin back to (x,y,z,w) space
-        const Y0 = j - t;
-        const Z0 = k - t;
-        const W0 = l - t;
-        const x0 = x - X0; // The x,y,z,w distances from the cell origin
-        const y0 = y - Y0;
-        const z0 = z - Z0;
-        const w0 = w - W0;
-        // For the 4D case, the simplex is a 4D shape I won't even try to describe.
-        // To find out which of the 24 possible simplices we're in, we need to
-        // determine the magnitude ordering of x0, y0, z0 and w0.
-        // Six pair-wise comparisons are performed between each possible pair
-        // of the four coordinates, and the results are used to rank the numbers.
-        let rankx = 0;
-        let ranky = 0;
-        let rankz = 0;
-        let rankw = 0;
-        if (x0 > y0)
-            rankx++;
-        else
-            ranky++;
-        if (x0 > z0)
-            rankx++;
-        else
-            rankz++;
-        if (x0 > w0)
-            rankx++;
-        else
-            rankw++;
-        if (y0 > z0)
-            ranky++;
-        else
-            rankz++;
-        if (y0 > w0)
-            ranky++;
-        else
-            rankw++;
-        if (z0 > w0)
-            rankz++;
-        else
-            rankw++;
-        // simplex[c] is a 4-vector with the numbers 0, 1, 2 and 3 in some order.
-        // Many values of c will never occur, since e.g. x>y>z>w makes x<z, y<w and x<w
-        // impossible. Only the 24 indices which have non-zero entries make any sense.
-        // We use a thresholding to set the coordinates in turn from the largest magnitude.
-        // Rank 3 denotes the largest coordinate.
-        // Rank 2 denotes the second largest coordinate.
-        // Rank 1 denotes the second smallest coordinate.
-        // The integer offsets for the second simplex corner
-        const i1 = rankx >= 3 ? 1 : 0;
-        const j1 = ranky >= 3 ? 1 : 0;
-        const k1 = rankz >= 3 ? 1 : 0;
-        const l1 = rankw >= 3 ? 1 : 0;
-        // The integer offsets for the third simplex corner
-        const i2 = rankx >= 2 ? 1 : 0;
-        const j2 = ranky >= 2 ? 1 : 0;
-        const k2 = rankz >= 2 ? 1 : 0;
-        const l2 = rankw >= 2 ? 1 : 0;
-        // The integer offsets for the fourth simplex corner
-        const i3 = rankx >= 1 ? 1 : 0;
-        const j3 = ranky >= 1 ? 1 : 0;
-        const k3 = rankz >= 1 ? 1 : 0;
-        const l3 = rankw >= 1 ? 1 : 0;
-        // The fifth corner has all coordinate offsets = 1, so no need to compute that.
-        const x1 = x0 - i1 + G4; // Offsets for second corner in (x,y,z,w) coords
-        const y1 = y0 - j1 + G4;
-        const z1 = z0 - k1 + G4;
-        const w1 = w0 - l1 + G4;
-        const x2 = x0 - i2 + 2.0 * G4; // Offsets for third corner in (x,y,z,w) coords
-        const y2 = y0 - j2 + 2.0 * G4;
-        const z2 = z0 - k2 + 2.0 * G4;
-        const w2 = w0 - l2 + 2.0 * G4;
-        const x3 = x0 - i3 + 3.0 * G4; // Offsets for fourth corner in (x,y,z,w) coords
-        const y3 = y0 - j3 + 3.0 * G4;
-        const z3 = z0 - k3 + 3.0 * G4;
-        const w3 = w0 - l3 + 3.0 * G4;
-        const x4 = x0 - 1.0 + 4.0 * G4; // Offsets for last corner in (x,y,z,w) coords
-        const y4 = y0 - 1.0 + 4.0 * G4;
-        const z4 = z0 - 1.0 + 4.0 * G4;
-        const w4 = w0 - 1.0 + 4.0 * G4;
-        // Work out the hashed gradient indices of the five simplex corners
-        const ii = i & 255;
-        const jj = j & 255;
-        const kk = k & 255;
-        const ll = l & 255;
-        // Calculate the contribution from the five corners
-        let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0 - w0 * w0;
-        if (t0 < 0)
-            n0 = 0.0;
-        else {
-            const gi0 = ii + perm[jj + perm[kk + perm[ll]]];
-            t0 *= t0;
-            n0 = t0 * t0 * (permGrad4x[gi0] * x0 + permGrad4y[gi0] * y0 + permGrad4z[gi0] * z0 + permGrad4w[gi0] * w0);
-        }
-        let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1 - w1 * w1;
-        if (t1 < 0)
-            n1 = 0.0;
-        else {
-            const gi1 = ii + i1 + perm[jj + j1 + perm[kk + k1 + perm[ll + l1]]];
-            t1 *= t1;
-            n1 = t1 * t1 * (permGrad4x[gi1] * x1 + permGrad4y[gi1] * y1 + permGrad4z[gi1] * z1 + permGrad4w[gi1] * w1);
-        }
-        let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2 - w2 * w2;
-        if (t2 < 0)
-            n2 = 0.0;
-        else {
-            const gi2 = ii + i2 + perm[jj + j2 + perm[kk + k2 + perm[ll + l2]]];
-            t2 *= t2;
-            n2 = t2 * t2 * (permGrad4x[gi2] * x2 + permGrad4y[gi2] * y2 + permGrad4z[gi2] * z2 + permGrad4w[gi2] * w2);
-        }
-        let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3 - w3 * w3;
-        if (t3 < 0)
-            n3 = 0.0;
-        else {
-            const gi3 = ii + i3 + perm[jj + j3 + perm[kk + k3 + perm[ll + l3]]];
-            t3 *= t3;
-            n3 = t3 * t3 * (permGrad4x[gi3] * x3 + permGrad4y[gi3] * y3 + permGrad4z[gi3] * z3 + permGrad4w[gi3] * w3);
-        }
-        let t4 = 0.6 - x4 * x4 - y4 * y4 - z4 * z4 - w4 * w4;
-        if (t4 < 0)
-            n4 = 0.0;
-        else {
-            const gi4 = ii + 1 + perm[jj + 1 + perm[kk + 1 + perm[ll + 1]]];
-            t4 *= t4;
-            n4 = t4 * t4 * (permGrad4x[gi4] * x4 + permGrad4y[gi4] * y4 + permGrad4z[gi4] * z4 + permGrad4w[gi4] * w4);
-        }
-        // Sum up and scale the result to cover the range [-1,1]
-        return 27.0 * (n0 + n1 + n2 + n3 + n4);
-    };
-}
-exports.createNoise4D = createNoise4D;
-/**
- * Builds a random permutation table.
- * This is exported only for (internal) testing purposes.
- * Do not rely on this export.
- * @private
- */
-function buildPermutationTable(random) {
-    const tableSize = 512;
-    const p = new Uint8Array(tableSize);
-    for (let i = 0; i < tableSize / 2; i++) {
-        p[i] = i;
-    }
-    for (let i = 0; i < tableSize / 2 - 1; i++) {
-        const r = i + ~~(random() * (256 - i));
-        const aux = p[i];
-        p[i] = p[r];
-        p[r] = aux;
-    }
-    for (let i = 256; i < tableSize; i++) {
-        p[i] = p[i - 256];
-    }
-    return p;
-}
-exports.buildPermutationTable = buildPermutationTable;
-
-},{}],13:[function(require,module,exports){
-"use strict";
 // import * as te from "./triangle_engine.js";
 // import * as mat4 from "./glMatrix/src/mat4.js";
 // import * as vec3 from "./glMatrix/src/vec3.js";
@@ -8670,91 +8198,66 @@ var Player = /** @class */ (function () {
     return Player;
 }());
 exports.Player = Player;
-var Chunk = /** @class */ (function () {
-    function Chunk(vertex_offset, position, size, side_length) {
-        this.positions = [];
-        this.normals = [];
-        this.diffuseColors = [];
-        this.transparency = [];
-        this.indexes = [];
-        this.id = Chunk.next_id;
-        Chunk.next_id += 1;
-        this.position = position;
-        this.size = size;
-        this.side_length = side_length;
-        this.dl = size / (side_length - 1);
-        this.vertex_offset = vertex_offset;
+var Material = /** @class */ (function () {
+    function Material(albedo, metallic, roughness, transparency, ior, emmissive) {
+        if (albedo === void 0) { albedo = [1, 1, 1]; }
+        if (metallic === void 0) { metallic = [0, 0, 0]; }
+        if (roughness === void 0) { roughness = [0, 0, 0]; }
+        if (transparency === void 0) { transparency = [0, 0, 0]; }
+        if (ior === void 0) { ior = [1, 1, 1]; }
+        if (emmissive === void 0) { emmissive = [0, 0, 0]; }
+        this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
+        this.metallic = metallic; // entre 0 et 1
+        this.roughness = roughness;
+        this.transparency = transparency;
+        this.ior = ior; //n1*sin(i) = n2*sin(r)
+        this.emmissive = emmissive;
+        this.id = -1;
     }
-    Chunk.prototype.generate = function (landscape) {
-        this.positions = [];
-        this.normals = [];
-        this.diffuseColors = [];
-        this.transparency = [];
-        this.indexes = [];
-        for (var i = 0; i < this.side_length; i++) {
-            for (var j = 0; j < this.side_length; j++) {
-                var x = this.position[0] + this.dl * i;
-                var y = this.position[1] + this.dl * j;
-                var z = landscape(x, y);
-                this.positions.push(-x);
-                this.positions.push(-y);
-                this.positions.push(-z);
-                var u = gl_matrix_1.vec3.fromValues(this.dl, 0, landscape(x + this.dl, y) - z);
-                var v = gl_matrix_1.vec3.fromValues(0, this.dl, landscape(x, y + this.dl) - z);
-                gl_matrix_1.vec3.cross(u, u, v);
-                gl_matrix_1.vec3.normalize(u, u);
-                this.normals.push(u[0]);
-                this.normals.push(u[1]);
-                this.normals.push(u[2]);
-                var r = 0.1;
-                var g = 0.1;
-                var b = 0.5;
-                if (z > 0 && z < 20) {
-                    r = 0.5;
-                    g = 0.5;
-                    b = 0.5;
-                }
-                else if (z >= 20) {
-                    r = 1;
-                    g = 1;
-                    b = 1;
-                }
-                this.diffuseColors.push(r);
-                this.diffuseColors.push(g);
-                this.diffuseColors.push(b);
-                this.transparency.push(0.0);
-                this.transparency.push(0.0);
-                this.transparency.push(0.0);
-            }
-        }
-        for (var i = 0; i < this.side_length - 1; i++) {
-            for (var j = 0; j < this.side_length - 1; j++) {
-                this.indexes.push(this.vertex_offset + this.side_length * i + j);
-                this.indexes.push(this.vertex_offset + this.side_length * i + j + 1);
-                this.indexes.push(this.vertex_offset + this.side_length * (i + 1) + j);
-                this.indexes.push(this.vertex_offset + this.side_length * (i + 1) + j + 1);
-                this.indexes.push(this.vertex_offset + this.side_length * i + j + 1);
-                this.indexes.push(this.vertex_offset + this.side_length * (i + 1) + j);
-            }
-        }
+    Material.next_id = 0;
+    return Material;
+}());
+var Light = /** @class */ (function () {
+    function Light(power, color, position) {
+        this.power = power;
+        this.color = color;
+        this.position = position;
+        this.id = -1;
+    }
+    Light.prototype.toArray = function () {
+        var result = [this.power];
+        result.push(this.color[0]);
+        result.push(this.color[1]);
+        result.push(this.color[2]);
+        result.push(this.position[0]);
+        result.push(this.position[1]);
+        result.push(this.position[2]);
+        return result;
     };
-    Chunk.next_id = 0;
-    return Chunk;
+    Light.next_id = 0;
+    return Light;
+}());
+var GameObject = /** @class */ (function () {
+    function GameObject(position, dimensions, vertices, triangles, material, innerObjects) {
+        if (innerObjects === void 0) { innerObjects = []; }
+        this.position = position;
+        this.dimensions = dimensions;
+        this.vertices = vertices;
+        this.triangles = triangles;
+        this.material = material;
+        this.innerObjects = innerObjects;
+    }
+    return GameObject;
 }());
 var GameEngine = /** @class */ (function () {
-    function GameEngine(view, player, landscape) {
+    function GameEngine(view, player) {
         this.dt_fps = 0;
         this.previousTimeStamp = 0;
         this.fps = 0;
-        this.nb_chunk = 5;
-        this.chunk_size = 50;
-        this.side_length = 10;
-        this.chunks = [];
         this.objects = [];
         this.lights = [];
         this.player = player;
         this.view = view;
-        this.landscape = landscape;
         //camera
         var width = 1000;
         var height = 600;
@@ -8861,22 +8364,45 @@ var GameEngine = /** @class */ (function () {
         var lights = [100, 100, 100, 0, 0, 0];
         for (var _i = 0, _a = this.objects; _i < _a.length; _i++) {
             var object = _a[_i];
+            var min_point = gl_matrix_1.vec3.fromValues(Infinity, Infinity, Infinity);
+            var max_point = gl_matrix_1.vec3.fromValues(-Infinity, -Infinity, -Infinity);
+            for (var _b = 0, _c = object.triangles; _b < _c.length; _b++) {
+                var triangle = _c[_b];
+                for (var i = 0; i < 3; i++) {
+                    var vertex = object.vertices[triangle[i]];
+                    for (var j = 0; j < 3; j++) {
+                        if (vertex[i] < min_point[i]) {
+                            min_point[i] = vertex[i];
+                        }
+                        if (vertex[i] > max_point[i]) {
+                            max_point[i] = vertex[i];
+                        }
+                    }
+                }
+            }
+            var scale = gl_matrix_1.vec3.fromValues(object.dimensions[0] / (max_point[0] - min_point[0]), object.dimensions[1] / (max_point[1] - min_point[1]), object.dimensions[2] / (max_point[2] - min_point[2]));
+            var start_vertices_index = vertices.length;
             objects.push(triangles.length / 3);
-            objects.push(object.triangles.length / 3);
+            objects.push(object.triangles.length);
             objects.push(materials.length / 3);
             objects.push(-object.position[0]);
             objects.push(-object.position[1]);
             objects.push(-object.position[2]);
-            objects.push(object.dimensions[0]);
-            objects.push(object.dimensions[1]);
-            objects.push(object.dimensions[2]);
-            for (var _b = 0, _c = object.vertices; _b < _c.length; _b++) {
-                var num = _c[_b];
-                vertices.push(num);
+            objects.push(object.dimensions[0] + 0.2);
+            objects.push(object.dimensions[1] + 0.2);
+            objects.push(object.dimensions[2] + 0.2);
+            for (var _d = 0, _e = object.vertices; _d < _e.length; _d++) {
+                var vertex = _e[_d];
+                vertices.push(-((vertex[0] - min_point[0]) * scale[0] + object.position[0] + 0.1));
+                vertices.push(-((vertex[1] - min_point[1]) * scale[1] + object.position[1] + 0.1));
+                vertices.push(-((vertex[2] - min_point[2]) * scale[2] + object.position[2] + 0.1));
+                console.log(vertex);
             }
-            for (var _d = 0, _e = object.triangles; _d < _e.length; _d++) {
-                var num = _e[_d];
-                triangles.push(num);
+            for (var _f = 0, _g = object.triangles; _f < _g.length; _f++) {
+                var triangle = _g[_f];
+                triangles.push(start_vertices_index + triangle[0]);
+                triangles.push(start_vertices_index + triangle[1]);
+                triangles.push(start_vertices_index + triangle[2]);
             }
             //material
             materials.push(object.material.albedo[0]);
@@ -8895,61 +8421,29 @@ var GameEngine = /** @class */ (function () {
             materials.push(object.material.emmissive[1]);
             materials.push(object.material.emmissive[2]);
         }
-        console.log(this.objects);
         this.engine.setTextures(vertices, triangles, objects, materials, lights);
     };
     GameEngine.prototype.generate_world = function () {
         this.objects = [];
-        var positions = [];
-        var normals = [];
-        var diffuseColors = [];
-        var transparency = [];
-        var indexes = [];
-        var vertex_offset = 0;
-        for (var i = 0; i < this.nb_chunk; i++) {
-            for (var j = 0; j < this.nb_chunk; j++) {
-                var chunk_x = i * this.chunk_size;
-                var chunk_y = j * this.chunk_size;
-                var chunk_z = -10;
-                var side_length = this.side_length; //Math.max(Math.floor(this.side_length/(2**i)), 2);
-                var chunk = new Chunk(vertex_offset, [chunk_x, chunk_y, chunk_z], this.chunk_size, side_length);
-                this.chunks.push(chunk);
-                chunk.generate(this.landscape);
-                for (var k = 0; k < chunk.positions.length; k++) {
-                    positions.push(chunk.positions[k]);
-                    normals.push(chunk.normals[k]);
-                    diffuseColors.push(chunk.diffuseColors[k]);
-                    transparency.push(chunk.transparency[k]);
-                }
-                for (var k = 0; k < chunk.indexes.length; k++) {
-                    indexes.push(chunk.indexes[k]);
-                }
-                vertex_offset += side_length * side_length;
-                this.objects.push(new GraphicEngine_1.GraphicObject(gl_matrix_1.vec3.fromValues(chunk.position[0], chunk.position[1], chunk.position[2]), gl_matrix_1.vec3.fromValues(this.chunk_size, this.chunk_size, this.chunk_size * 2), chunk.positions, chunk.indexes, new GraphicEngine_1.Material()));
-            }
-        }
-        this.engine.setBuffers(positions, normals, diffuseColors, transparency, indexes);
-        this.engine.nb_triangles_indexes = indexes.length;
+        var vertices = [
+            gl_matrix_1.vec3.fromValues(0, 0, 0),
+            gl_matrix_1.vec3.fromValues(10, 0, 0),
+            gl_matrix_1.vec3.fromValues(0, -10, 0),
+            gl_matrix_1.vec3.fromValues(0, 0, 10),
+            gl_matrix_1.vec3.fromValues(10, 10, 0),
+            gl_matrix_1.vec3.fromValues(10, 0, 10),
+            gl_matrix_1.vec3.fromValues(0, 10, 10),
+            gl_matrix_1.vec3.fromValues(10, 10, 10),
+        ];
+        var triangles = [
+            gl_matrix_1.vec3.fromValues(0, 1, 2),
+            gl_matrix_1.vec3.fromValues(1, 2, 3),
+            gl_matrix_1.vec3.fromValues(2, 3, 4),
+        ];
+        var material = new Material(gl_matrix_1.vec3.fromValues(1, 0, 0));
+        var my_object = new GameObject(gl_matrix_1.vec3.fromValues(10, -10, 10), gl_matrix_1.vec3.fromValues(20, 5, 8), vertices, triangles, material, []);
+        this.objects.push(my_object);
         this.load_scene();
-    };
-    GameEngine.prototype.update_world = function () {
-        var dl = this.nb_chunk * this.chunk_size;
-        for (var _i = 0, _a = this.chunks; _i < _a.length; _i++) {
-            var chunk = _a[_i];
-            var u = gl_matrix_1.vec3.create();
-            var position = [
-                chunk.position[0] + chunk.size / 2,
-                chunk.position[1] + chunk.size / 2,
-                chunk.position[2] + chunk.size / 2,
-            ];
-            gl_matrix_1.vec3.subtract(u, this.player.position, position);
-            if (Math.round(u[0] / dl) != 0 || Math.round(u[1] / dl) != 0) {
-                chunk.position[0] += Math.round(u[0] / dl) * dl;
-                chunk.position[1] += Math.round(u[1] / dl) * dl;
-                chunk.generate(this.landscape);
-                this.engine.updateVertices(chunk.vertex_offset * 3, chunk.positions, chunk.normals, chunk.diffuseColors, chunk.transparency);
-            }
-        }
     };
     GameEngine.prototype.nextFrame = function (timestamp) {
         if (this.player.rendering) {
@@ -9006,74 +8500,16 @@ var GameEngine = /** @class */ (function () {
 }());
 exports.GameEngine = GameEngine;
 
-},{"./GraphicEngine":14,"gl-matrix":2}],14:[function(require,module,exports){
+},{"./GraphicEngine":13,"gl-matrix":2}],13:[function(require,module,exports){
 "use strict";
 // import * as mat4 from "/modules/glMatrix/src/mat4.js";
 // import * as vec3 from "/modules/glMatrix/src/vec3.js";
 // import * as vec2 from "/modules/glMatrix/src/vec2.js";
 exports.__esModule = true;
-exports.GraphicEngine = exports.Camera = exports.Material = exports.GraphicObject = exports.Light = void 0;
+exports.GraphicEngine = exports.Camera = void 0;
 var gl_matrix_1 = require("gl-matrix");
 var Shaders_1 = require("./Shaders");
 // Classes
-var Light = /** @class */ (function () {
-    function Light(power, color, position) {
-        this.power = power;
-        this.color = color;
-        this.position = position;
-        this.id = -1;
-    }
-    Light.prototype.toArray = function () {
-        var result = [this.power];
-        result.push(this.color[0]);
-        result.push(this.color[1]);
-        result.push(this.color[2]);
-        result.push(this.position[0]);
-        result.push(this.position[1]);
-        result.push(this.position[2]);
-        return result;
-    };
-    Light.next_id = 0;
-    return Light;
-}());
-exports.Light = Light;
-var Material = /** @class */ (function () {
-    function Material(albedo, transparency, metallic, ior, emmissive) {
-        if (albedo === void 0) { albedo = [1, 1, 1]; }
-        if (transparency === void 0) { transparency = [0, 0, 0]; }
-        if (metallic === void 0) { metallic = [0, 0, 0]; }
-        if (ior === void 0) { ior = [1, 1, 1]; }
-        if (emmissive === void 0) { emmissive = [0, 0, 0]; }
-        this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
-        this.transparency = transparency;
-        this.metallic = metallic; // entre 0 et 1
-        this.ior = ior; //n1*sin(i) = n2*sin(r)
-        this.emmissive = emmissive;
-        this.id = -1;
-    }
-    Material.prototype.toArray = function () {
-        var result = Array(this.albedo);
-        result = result.concat(this.transparency);
-        result = result.concat(this.metallic);
-        result = result.concat(this.ior);
-        result = result.concat(this.emmissive);
-        return result; //[albedo, transparency, metallic, ior, emmissive]
-    };
-    Material.next_id = 0;
-    return Material;
-}());
-exports.Material = Material;
-var GraphicObject = /** @class */ (function () {
-    function GraphicObject(position, dimensions, vertices, triangles, material) {
-        this.position = position;
-        this.dimensions = dimensions;
-        this.vertices = vertices;
-        this.triangles = triangles;
-        this.material = material;
-    }
-    return GraphicObject;
-}());
-exports.GraphicObject = GraphicObject;
 var Camera = /** @class */ (function () {
     function Camera(width, height, render_distance) {
         if (render_distance === void 0) { render_distance = 100; }
@@ -9125,7 +8561,7 @@ var GraphicEngine = /** @class */ (function () {
         // Clear the canvas before we start drawing on it.
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
         // Tell WebGL which indices to use to index the vertices
-        if (this.mode == "Triangle") {
+        if (this.mode == "Rasterization") {
             this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.trianglesBuffer);
             this.gl.drawElements(this.gl.TRIANGLES, this.nb_triangles_indexes, this.gl.UNSIGNED_INT, 0);
         }
@@ -9144,7 +8580,7 @@ var GraphicEngine = /** @class */ (function () {
     GraphicEngine.prototype.initShaderProgram = function () {
         var vertexShader = null;
         var fragmentShader = null;
-        if (this.mode == "Triangle") {
+        if (this.mode == "Rasterization") {
             vertexShader = this.loadShader(this.gl.VERTEX_SHADER, Shaders_1.TriangleVertexShaderSource);
             fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, Shaders_1.TriangleFragmentShaderSource);
         }
@@ -9235,7 +8671,7 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
     };
     GraphicEngine.prototype.loadLocations = function () {
-        if (this.mode == "Triangle") {
+        if (this.mode == "Rasterization") {
             // uniforms locations
             this.projectionMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, "uProjectionMatrix");
             this.TransformMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, "uTransformMatrix");
@@ -9332,7 +8768,7 @@ var GraphicEngine = /** @class */ (function () {
     };
     GraphicEngine.prototype.setCameraUniforms = function (camera) {
         // Set the shader uniform projection matrix
-        if (this.mode == "Triangle") {
+        if (this.mode == "Rasterization") {
             this.gl.uniformMatrix4fv(this.projectionMatrixLocation, false, camera.projectionMatrix);
         }
         else if (this.mode == "Raytracing") {
@@ -9354,7 +8790,7 @@ var GraphicEngine = /** @class */ (function () {
     };
     GraphicEngine.prototype.setTransformVertices = function (TransformMatrix) {
         // Set the shader uniforms
-        if (this.mode == "Triangle") {
+        if (this.mode == "Rasterization") {
             this.gl.uniformMatrix4fv(this.TransformMatrixLocation, false, TransformMatrix);
         }
     };
@@ -9362,7 +8798,7 @@ var GraphicEngine = /** @class */ (function () {
 }());
 exports.GraphicEngine = GraphicEngine;
 
-},{"./Shaders":15,"gl-matrix":2}],15:[function(require,module,exports){
+},{"./Shaders":14,"gl-matrix":2}],14:[function(require,module,exports){
 "use strict";
 // Shader Programs
 exports.__esModule = true;
@@ -9376,32 +8812,31 @@ exports.RayTracingVertexShaderSource = RayTracingVertexShaderSource;
 // TODO set time uniform and implement random function that is different for each pixel and each time
 // TODO: Bricolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
 var RayTracingFragmentShaderSource = "#version 300 es\n\n    // Precisions\n\n    precision highp float;\n    precision mediump int;\n\n    // Structures\n\n    struct Object\n    {\n        float triangle_index;\n        float nb_triangles;\n        float material_index;\n\n        vec3 position;\n        vec3 dimensions;\n    };\n\n    struct Material\n    {\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 metallic; //reflection irror like\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        vec3 lightAmount;\n        vec3 position;\n    };\n\n    // Uniforms\n\n    uniform sampler2D uVertices; // position\n    uniform mediump usampler2D uTriangles; // vertices_index\n    uniform sampler2D uObjects; // start_triangle_index, nb_triangles, material_index [, position, dimensions, transform_matrix (rotate, translate, scale)]\n    uniform sampler2D uMaterials; // Albedo, Transparency, Metallic, Ior, Emmissive\n    uniform sampler2D uLightSources; // LightAmount, Position\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n    uniform float uTime;\n    " +
-    "\n\n    // Functions\n\n    float rand(float seed);\n    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle);\n    vec2 intersectBox(vec3 position, vec3 dimensions);\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions);\n    vec3 getPixelColor();\n\n    float rand(float x){\n        return 0.;\n        return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);\n    }\n\n    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle, ivec2 vertices_sizes){\n\n        float vertices_width = float(vertices_sizes.x);\n\n        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;\n        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n\n        // Compute plane normale\n        \n        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n        float area = length(normale); \n        normale /= area;\n\n        // check if ray parallel to triangle\n        // float NdotRayDirection = dot(normale, direction); \n        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n        //     return false;  //they are parallel so they don't intersect ! \n\n        // compute t\n        float t = dot(v0 - cast_point, normale) / dot(direction, normale);\n        vec3 M = cast_point + t * direction;\n\n        // inside / outside test V1\n        vec3 C;  //vector perpendicular to triangle's plane\n     \n        // edge 0\n        C = cross(M - v0, v1 - v0); \n        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n     \n        // edge 1\n        C = cross(M - v0, v2 - v0); \n        if (dot(C, normale) < 0.) return -1.;\n     \n        // edge 2\n        C = cross(M - v1, v2 - v1); \n        if (dot(C, normale) > 0.) return -1.; \n\n        return t;\n    }\n\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions){\n        return position.x < box_position.x && position.x > box_position.x - dimensions.x\n        && position.y < box_position.y && position.y > box_position.y - dimensions.y\n        && position.z < box_position.z && position.z > box_position.z - dimensions.z;\n    }\n\n    vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){\n\n        float min_t = 10000000.0;\n        float max_t = -10000000.0;\n\n        float t0 = (position.x - cast_point.x) / direction.x;\n        vec3 M0 = cast_point + t0 * direction;\n        float t1 = (position.x - dimensions.x - cast_point.x) / direction.x;\n        vec3 M1 = cast_point + t1 * direction;\n        float t2 = (position.y - cast_point.y) / direction.y;\n        vec3 M2 = cast_point + t2 * direction;\n        float t3 = (position.y - dimensions.y - cast_point.y) / direction.y;\n        vec3 M3 = cast_point + t3 * direction;\n        float t4 = (position.z - cast_point.z) / direction.z;\n        vec3 M4 = cast_point + t4 * direction;\n        float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;\n        vec3 M5 = cast_point + t5 * direction;\n\n        if (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z){\n            if (t0 < min_t){\n                min_t = t0;\n            }\n            if (t0 > max_t){\n                max_t = t0;\n            }\n        }\n        if (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z){\n            if (t1 < min_t){\n                min_t = t1;\n            }\n            if (t1 > max_t){\n                max_t = t1;\n            }\n        }\n        if (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z){\n            if (t2 < min_t){\n                min_t = t2;\n            }\n            if (t2 > max_t){\n                max_t = t2;\n            }\n        }\n        if (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z){\n            if (t3 < min_t){\n                min_t = t3;\n            }\n            if (t3 > max_t){\n                max_t = t3;\n            }\n        }\n        if (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x){\n            if (t4 < min_t){\n                min_t = t4;\n            }\n            if (t4 > max_t){\n                max_t = t4;\n            }\n        }\n        if (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x){\n            if (t5 < min_t){\n                min_t = t5;\n            }\n            if (t5 > max_t){\n                max_t = t5;\n            }\n        }\n\n        return vec2(min_t, max_t);\n    }\n    " +
-    "\n\n    vec3 getPixelColor(){\n        // texture sizes\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 objects_sizes = textureSize(uObjects, 0);\n        ivec2 materials_sizes = textureSize(uMaterials, 0);\n        ivec2 light_sources_sizes = textureSize(uLightSources, 0);\n\n        // Direction of the ray\n\n        // random number to offset ray\n        float rand_num =  rand(-1.);\n\n        float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;\n        float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;\n\n        vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n\n        float diaphragme = 0.5;\n        float max_distance = 1000000000.0;\n        int step = 0;\n        int max_step = 20;\n        float distance = 0.;\n        Material current_material;\n        vec3 cast_point = uCameraPosition;\n        vec3 inLight = vec3(0.,0.,0.);\n        float ray_percentage = 1.;\n\n        // All ray steps\n        while (distance < max_distance && step < max_step && ray_percentage > 0.1){\n            // loop on objects\n    \n            float t = -1.; // distance to next intersection point\n            float next_t = -1.;\n            \n            // Find closest object\n\n            Object closest_object;\n            bool hitting_object = false;\n            float object_index = 0.;\n\n            while (object_index < float(objects_sizes.x)){\n    \n                vec4 object_indices = texture(uObjects, vec2( (object_index + 0.5) / float(objects_sizes.x) ));\n                vec4 object_position = texture(uObjects, vec2( (object_index + 1. + 0.5) / float(objects_sizes.x) ));\n                vec4 object_dimensions = texture(uObjects, vec2( (object_index + 2. + 0.5) / float(objects_sizes.x) ));\n                Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);\n    \n                vec2 min_max_t = intersectBox(cast_point, direction, object.position, object.dimensions);\n                float min_t = min_max_t.x;\n                float max_t = min_max_t.y;\n    \n                if (min_t < max_t && max_t>0.){ // Si le rayon intersect la box\n                    float t_object = max(min_t, 0.); // Si min_t < 0. on est dans l'objet\n\n                    if (t<0. || t_object < t){\n                        hitting_object = true;\n                        closest_object = object;\n                        t = t_object;\n                        next_t = max_t - t + 0.01;\n                    }\n                }\n    \n                object_index += 3.;\n    \n            }\n    \n            // Go in closest object and intersect its triangles\n\n            if (hitting_object){\n\n                // change step\n                cast_point = cast_point + t * direction;\n                distance += t;\n                t = -1.;\n\n                // Material\n    \n                vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));\n                vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));\n                vec4 metallic = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) ));\n                vec4 ior = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) ));\n                vec4 emissive = texture(uMaterials, vec2( (closest_object.material_index + 4. + 0.5) / float(materials_sizes.x) ));\n                \n                Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);\n    \n                // loop on triangles\n                bool hitting_triangle = false;\n                float triangle_index = closest_object.triangle_index;\n                vec3 normale;\n        \n                while (triangle_index < closest_object.triangle_index + closest_object.nb_triangles){\n        \n                    // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n                    vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );\n                    uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n        \n                    float t_triangle = intersecTriangle(cast_point, direction, triangle, vertices_sizes);\n    \n                    vec3 hitPointTriangle = cast_point + t_triangle * direction;\n                    bool is_in_box = inBox(hitPointTriangle, closest_object.position, closest_object.dimensions);\n                    if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){\n                        t = t_triangle;\n                        current_material = material;\n                        hitting_triangle = true;\n\n                        // Get normale\n                        float vertices_width = float(vertices_sizes.x);\n                        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;\n                        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n                        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n                        \n                        normale = cross(v1 - v0, v2 - v0);\n                        normale = normalize(normale);\n                        // float area = length(normale); \n                        // normale /= area;\n                    }\n    \n                    triangle_index++;\n                }\n\n                float box_transparency = 0.997;\n\n                if (hitting_triangle){\n\n                    // box color (transparent)\n                    float light_throug = pow(box_transparency, t);\n                    inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n\n                    // increment cast point\n                    ray_percentage *= light_throug;\n                    cast_point = cast_point + t * direction;\n                    distance += t;\n                    \n                    // Reflection\n                    float reflection_coef = 0.5;\n                    if (rand(float(step)) < reflection_coef){\n                        direction -= 2. * dot(direction, normale) * normale;\n                        direction = normalize(direction);\n                        cast_point = cast_point + 0.01 * direction;\n                    } else {\n                        // triangle color\n                        float l = 1. - distance/300.;\n                        inLight += ray_percentage*vec3(0., l/2., l);\n                        break;\n                    }\n\n                } else {\n                    float light_throug = pow(box_transparency, next_t);\n                    inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n                    ray_percentage *= light_throug;\n\n                    cast_point = cast_point + next_t * direction;\n                    distance += next_t;\n                }\n    \n            } else {\n                inLight += ray_percentage*sky_box_color;\n                // inLight = vec3(ray_percentage);\n                break;\n            }\n\n            step++;\n        }\n\n        return vec3(float(step)/float(max_step));\n        // return diaphragme * inLight;\n    }\n\n\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
+    "\n\n    // Functions\n\n    float rand(float seed);\n    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle);\n    vec2 intersectBox(vec3 position, vec3 dimensions);\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions);\n    vec3 getPixelColor();\n\n    float rand(float x){\n        return 1.;\n        return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);\n    }\n\n    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle, ivec2 vertices_sizes){\n\n        float vertices_width = float(vertices_sizes.x);\n\n        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;\n        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n\n        // Compute plane normale\n        \n        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n        float area = length(normale); \n        normale /= area;\n\n        // check if ray parallel to triangle\n        // float NdotRayDirection = dot(normale, direction); \n        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n        //     return false;  //they are parallel so they don't intersect ! \n\n        // compute t\n        float t = dot(v0 - cast_point, normale) / dot(direction, normale);\n        vec3 M = cast_point + t * direction;\n\n        // inside / outside test V1\n        vec3 C;  //vector perpendicular to triangle's plane\n     \n        // edge 0\n        C = cross(M - v0, v1 - v0); \n        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n     \n        // edge 1\n        C = cross(M - v0, v2 - v0); \n        if (dot(C, normale) < 0.) return -1.;\n     \n        // edge 2\n        C = cross(M - v1, v2 - v1); \n        if (dot(C, normale) > 0.) return -1.; \n\n        return t;\n    }\n\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions){\n        return position.x < box_position.x && position.x > box_position.x - dimensions.x\n        && position.y < box_position.y && position.y > box_position.y - dimensions.y\n        && position.z < box_position.z && position.z > box_position.z - dimensions.z;\n    }\n\n    vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){\n\n        float min_t = 10000000.0;\n        float max_t = -10000000.0;\n\n        float t0 = (position.x - cast_point.x) / direction.x;\n        vec3 M0 = cast_point + t0 * direction;\n        float t1 = (position.x - dimensions.x - cast_point.x) / direction.x;\n        vec3 M1 = cast_point + t1 * direction;\n        float t2 = (position.y - cast_point.y) / direction.y;\n        vec3 M2 = cast_point + t2 * direction;\n        float t3 = (position.y - dimensions.y - cast_point.y) / direction.y;\n        vec3 M3 = cast_point + t3 * direction;\n        float t4 = (position.z - cast_point.z) / direction.z;\n        vec3 M4 = cast_point + t4 * direction;\n        float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;\n        vec3 M5 = cast_point + t5 * direction;\n\n        if (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z){\n            if (t0 < min_t){\n                min_t = t0;\n            }\n            if (t0 > max_t){\n                max_t = t0;\n            }\n        }\n        if (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z){\n            if (t1 < min_t){\n                min_t = t1;\n            }\n            if (t1 > max_t){\n                max_t = t1;\n            }\n        }\n        if (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z){\n            if (t2 < min_t){\n                min_t = t2;\n            }\n            if (t2 > max_t){\n                max_t = t2;\n            }\n        }\n        if (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z){\n            if (t3 < min_t){\n                min_t = t3;\n            }\n            if (t3 > max_t){\n                max_t = t3;\n            }\n        }\n        if (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x){\n            if (t4 < min_t){\n                min_t = t4;\n            }\n            if (t4 > max_t){\n                max_t = t4;\n            }\n        }\n        if (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x){\n            if (t5 < min_t){\n                min_t = t5;\n            }\n            if (t5 > max_t){\n                max_t = t5;\n            }\n        }\n\n        return vec2(min_t, max_t);\n    }\n    " +
+    "\n\n    vec3 getPixelColor(){\n        // texture sizes\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 objects_sizes = textureSize(uObjects, 0);\n        ivec2 materials_sizes = textureSize(uMaterials, 0);\n        ivec2 light_sources_sizes = textureSize(uLightSources, 0);\n\n        // Direction of the ray\n\n        // random number to offset ray\n        float rand_num =  rand(-1.);\n\n        float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;\n        float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;\n\n        vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n\n        float diaphragme = 0.5;\n        float max_distance = 1000000000.0;\n        int step = 0;\n        int max_step = 20;\n        float distance = 0.;\n        Material current_material;\n        vec3 cast_point = uCameraPosition;\n        vec3 inLight = vec3(0.,0.,0.);\n        float ray_percentage = 1.;\n\n        // All ray steps\n        while (distance < max_distance && step < max_step && ray_percentage > 0.1){\n            // loop on objects\n    \n            float t = -1.; // distance to next intersection point\n            float next_t = -1.;\n            \n            // Find closest object\n\n            Object closest_object;\n            bool hitting_object = false;\n            float object_index = 0.;\n\n            while (object_index < float(objects_sizes.x)){\n    \n                vec4 object_indices = texture(uObjects, vec2( (object_index + 0.5) / float(objects_sizes.x) ));\n                vec4 object_position = texture(uObjects, vec2( (object_index + 1. + 0.5) / float(objects_sizes.x) ));\n                vec4 object_dimensions = texture(uObjects, vec2( (object_index + 2. + 0.5) / float(objects_sizes.x) ));\n                Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);\n    \n                vec2 min_max_t = intersectBox(cast_point, direction, object.position, object.dimensions);\n                float min_t = min_max_t.x;\n                float max_t = min_max_t.y;\n    \n                if (min_t < max_t && max_t>0.){ // Si le rayon intersect la box\n                    float t_object = max(min_t, 0.); // Si min_t < 0. on est dans l'objet\n\n                    if (t<0. || t_object < t){\n                        hitting_object = true;\n                        closest_object = object;\n                        t = t_object;\n                        next_t = max_t - t + 0.01;\n                    }\n                }\n    \n                object_index += 3.;\n    \n            }\n    \n            // Go in closest object and intersect its triangles\n\n            if (hitting_object){\n\n                // change step\n                cast_point = cast_point + t * direction;\n                distance += t;\n                t = -1.;\n\n                // Material\n    \n                vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));\n                vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));\n                vec4 metallic = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) ));\n                vec4 ior = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) ));\n                vec4 emissive = texture(uMaterials, vec2( (closest_object.material_index + 4. + 0.5) / float(materials_sizes.x) ));\n                \n                Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);\n    \n                // loop on triangles\n                bool hitting_triangle = false;\n                float triangle_index = closest_object.triangle_index;\n                vec3 normale;\n        \n                while (triangle_index < closest_object.triangle_index + closest_object.nb_triangles){\n        \n                    // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n                    vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );\n                    uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n        \n                    float t_triangle = intersecTriangle(cast_point, direction, triangle, vertices_sizes);\n    \n                    vec3 hitPointTriangle = cast_point + t_triangle * direction;\n                    bool is_in_box = inBox(hitPointTriangle, closest_object.position, closest_object.dimensions);\n                    if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){\n                        t = t_triangle;\n                        current_material = material;\n                        hitting_triangle = true;\n\n                        // Get normale\n                        float vertices_width = float(vertices_sizes.x);\n                        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;\n                        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n                        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n                        \n                        normale = cross(v1 - v0, v2 - v0);\n                        normale = normalize(normale);\n                        // float area = length(normale); \n                        // normale /= area;\n                    }\n    \n                    triangle_index++;\n                }\n\n                float box_transparency = 0.9;\n\n                if (hitting_triangle){\n\n                    // box color (transparent)\n                    float light_throug = pow(box_transparency, t);\n                    inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n\n                    // increment cast point\n                    ray_percentage *= light_throug;\n                    cast_point = cast_point + t * direction;\n                    distance += t;\n                    \n                    // Reflection\n                    float reflection_coef = 0.5;\n                    if (rand(float(step)) < reflection_coef){\n                        direction -= 2. * dot(direction, normale) * normale;\n                        direction = normalize(direction);\n                        cast_point = cast_point + 0.01 * direction;\n                    } else {\n                        // triangle color\n                        float l = 1. - distance/300.;\n                        inLight += ray_percentage*vec3(0., l/2., l);\n                        break;\n                    }\n\n                } else {\n                    float light_throug = pow(box_transparency, next_t);\n                    inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n                    ray_percentage *= light_throug;\n\n                    cast_point = cast_point + next_t * direction;\n                    distance += next_t;\n                }\n    \n            } else {\n                inLight += ray_percentage*sky_box_color;\n                // inLight = vec3(ray_percentage);\n                break;\n            }\n\n            step++;\n        }\n\n        // return vec3(float(step)/float(max_step));\n        return diaphragme * inLight;\n    }\n\n\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
 exports.RayTracingFragmentShaderSource = RayTracingFragmentShaderSource;
 
-},{}],16:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 "use strict";
 var _a;
 exports.__esModule = true;
 var GameEngine_1 = require("./GameEngine");
-var simplex_noise_1 = require("simplex-noise");
 // Materials
 // Landscape
-var altitude_max = 50;
-var noise = (0, simplex_noise_1.createNoise2D)();
-var landscape = function (a, b) {
-    var f = 100;
-    var detail = 6;
-    var res = 0;
-    for (var k = 0; k < detail; k++) {
-        res += (altitude_max * noise((a * Math.pow(2, k)) / f, (b * Math.pow(2, k)) / f)) / Math.pow(2, k);
-    }
-    if (res < -1) {
-        res = -1;
-    }
-    return res;
-};
+// const altitude_max = 50;
+// const noise: NoiseFunction2D = createNoise2D();
+// const landscape = (a: number, b: number) => {
+//   const f = 100;
+//   const detail = 6;
+//   let res = 0;
+//   for (let k = 0; k < detail; k++) {
+//     res += (altitude_max * noise((a * 2 ** k) / f, (b * 2 ** k) / f)) / 2 ** k;
+//   }
+//   if (res < -1) {
+//     res = -1;
+//   }
+//   return res;
+// };
 // Main
 var player = new GameEngine_1.Player([0, 0, 0], 0, Math.PI / 2);
 var width = 1100;
@@ -9410,15 +8845,15 @@ var canvas = document.createElement("canvas");
 canvas.width = width;
 canvas.height = height;
 document.getElementById("view").appendChild(canvas);
-var game = new GameEngine_1.GameEngine(canvas, player, landscape);
+var game = new GameEngine_1.GameEngine(canvas, player);
 // game events
 (_a = document
     .getElementById("switch_mode_btn")) === null || _a === void 0 ? void 0 : _a.addEventListener("click", function (event) {
-    if (game.engine.mode == "Triangle") {
+    if (game.engine.mode == "Rasterization") {
         game.load_mode("Raytracing");
     }
     else {
-        game.load_mode("Triangle");
+        game.load_mode("Rasterization");
     }
 });
 game.run();
@@ -9426,10 +8861,10 @@ game.run();
 // Use WebGL
 // Make game environment
 // TODO
-// Use material to make use of the ray to have beautiful graphics
+// Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
 // Use frameBuffer
 // Make object groups
-// Refacto object to make use of transform and position
+// Refacto object to make use of transform and position & use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
 // Refacto game structure
 // Graphics modes
@@ -9439,4 +8874,4 @@ game.run();
 // Installer
 // Readme
 
-},{"./GameEngine":13,"simplex-noise":12}]},{},[16]);
+},{"./GameEngine":12}]},{},[15]);

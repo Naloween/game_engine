@@ -124,7 +124,7 @@ const RayTracingFragmentShaderSource =
     vec3 getPixelColor();
 
     float rand(float x){
-        return 0.;
+        return 1.;
         return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
     }
 
@@ -373,7 +373,7 @@ const RayTracingFragmentShaderSource =
                     triangle_index++;
                 }
 
-                float box_transparency = 0.997;
+                float box_transparency = 0.9;
 
                 if (hitting_triangle){
 
@@ -417,8 +417,8 @@ const RayTracingFragmentShaderSource =
             step++;
         }
 
-        return vec3(float(step)/float(max_step));
-        // return diaphragme * inLight;
+        // return vec3(float(step)/float(max_step));
+        return diaphragme * inLight;
     }
 
 

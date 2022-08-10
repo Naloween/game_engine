@@ -2,13 +2,7 @@
 // import * as mat4 from "./glMatrix/src/mat4.js";
 // import * as vec3 from "./glMatrix/src/vec3.js";
 
-import {
-  Camera,
-  GraphicEngine,
-  Material,
-  GraphicObject,
-  Light,
-} from "./GraphicEngine";
+import { Camera, GraphicEngine, Light } from "./GraphicEngine";
 import { vec3, mat4 } from "gl-matrix";
 
 class Player {
@@ -106,102 +100,88 @@ class Player {
   }
 }
 
-class Chunk {
+class Material {
   static next_id = 0;
 
   id: number;
 
-  position: vec3;
-  size: number;
-  side_length: number;
-  dl: number;
-
-  vertex_offset: number;
-
-  positions: number[] = [];
-  normals: number[] = [];
-  diffuseColors: number[] = [];
-  transparency: number[] = [];
-  indexes: number[] = [];
+  albedo: vec3; // the color of the material (for diffusion)
+  metallic: vec3; //reflection irror like
+  roughness: vec3;
+  transparency: vec3; // the transparency of the material percentage that get out for 1m
+  ior: vec3; // index of refraction ou IOR
+  emmissive: vec3; // amount of light emited for rgb
 
   constructor(
-    vertex_offset: number,
-    position: vec3,
-    size: number,
-    side_length: number
+    albedo: vec3 = [1, 1, 1],
+    metallic: vec3 = [0, 0, 0],
+    roughness: vec3 = [0, 0, 0],
+    transparency: vec3 = [0, 0, 0],
+    ior: vec3 = [1, 1, 1],
+    emmissive: vec3 = [0, 0, 0]
   ) {
-    this.id = Chunk.next_id;
-    Chunk.next_id += 1;
+    this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
+    this.metallic = metallic; // entre 0 et 1
+    this.roughness = roughness;
+    this.transparency = transparency;
+    this.ior = ior; //n1*sin(i) = n2*sin(r)
+    this.emmissive = emmissive;
 
+    this.id = -1;
+  }
+}
+
+class Light {
+  static next_id = 0;
+
+  id: number;
+  power: number;
+  color: vec3;
+  position: vec3;
+
+  constructor(power: number, color: vec3, position: vec3) {
+    this.power = power;
+    this.color = color;
     this.position = position;
-    this.size = size;
-    this.side_length = side_length;
-    this.dl = size / (side_length - 1);
-
-    this.vertex_offset = vertex_offset;
+    this.id = -1;
   }
 
-  generate(landscape: Function) {
-    this.positions = [];
-    this.normals = [];
-    this.diffuseColors = [];
-    this.transparency = [];
-    this.indexes = [];
+  toArray() {
+    let result = [this.power];
+    result.push(this.color[0]);
+    result.push(this.color[1]);
+    result.push(this.color[2]);
+    result.push(this.position[0]);
+    result.push(this.position[1]);
+    result.push(this.position[2]);
 
-    for (let i = 0; i < this.side_length; i++) {
-      for (let j = 0; j < this.side_length; j++) {
-        let x = this.position[0] + this.dl * i;
-        let y = this.position[1] + this.dl * j;
-        let z = landscape(x, y);
-        this.positions.push(-x);
-        this.positions.push(-y);
-        this.positions.push(-z);
+    return result;
+  }
+}
 
-        let u = vec3.fromValues(this.dl, 0, landscape(x + this.dl, y) - z);
-        let v = vec3.fromValues(0, this.dl, landscape(x, y + this.dl) - z);
-        vec3.cross(u, u, v);
-        vec3.normalize(u, u);
-        this.normals.push(u[0]);
-        this.normals.push(u[1]);
-        this.normals.push(u[2]);
+class GameObject {
+  position: vec3;
+  dimensions: vec3;
 
-        let r = 0.1;
-        let g = 0.1;
-        let b = 0.5;
+  triangles: vec3[];
+  vertices: vec3[];
+  innerObjects: GameObject[];
+  material: Material;
 
-        if (z > 0 && z < 20) {
-          r = 0.5;
-          g = 0.5;
-          b = 0.5;
-        } else if (z >= 20) {
-          r = 1;
-          g = 1;
-          b = 1;
-        }
-
-        this.diffuseColors.push(r);
-        this.diffuseColors.push(g);
-        this.diffuseColors.push(b);
-
-        this.transparency.push(0.0);
-        this.transparency.push(0.0);
-        this.transparency.push(0.0);
-      }
-    }
-
-    for (let i = 0; i < this.side_length - 1; i++) {
-      for (let j = 0; j < this.side_length - 1; j++) {
-        this.indexes.push(this.vertex_offset + this.side_length * i + j);
-        this.indexes.push(this.vertex_offset + this.side_length * i + j + 1);
-        this.indexes.push(this.vertex_offset + this.side_length * (i + 1) + j);
-
-        this.indexes.push(
-          this.vertex_offset + this.side_length * (i + 1) + j + 1
-        );
-        this.indexes.push(this.vertex_offset + this.side_length * i + j + 1);
-        this.indexes.push(this.vertex_offset + this.side_length * (i + 1) + j);
-      }
-    }
+  constructor(
+    position: vec3,
+    dimensions: vec3,
+    vertices: vec3[],
+    triangles: vec3[],
+    material: Material,
+    innerObjects: GameObject[] = []
+  ) {
+    this.position = position;
+    this.dimensions = dimensions;
+    this.vertices = vertices;
+    this.triangles = triangles;
+    this.material = material;
+    this.innerObjects = innerObjects;
   }
 }
 
@@ -212,24 +192,17 @@ class GameEngine {
 
   player: Player;
   view: HTMLElement;
-  landscape: Function;
 
   dt_fps = 0;
   previousTimeStamp = 0;
   fps = 0;
 
-  nb_chunk = 5;
-  chunk_size = 50;
-  side_length = 10;
-  chunks: Chunk[] = [];
-
-  objects: GraphicObject[] = [];
+  objects: GameObject[] = [];
   lights: Light[] = [];
 
-  constructor(view: HTMLCanvasElement, player: Player, landscape: Function) {
+  constructor(view: HTMLCanvasElement, player: Player) {
     this.player = player;
     this.view = view;
-    this.landscape = landscape;
 
     //camera
     const width = 1000;
@@ -250,7 +223,7 @@ class GameEngine {
     this.load_events();
   }
 
-  load_mode(mode: "Triangle" | "Raytracing") {
+  load_mode(mode: "Rasterization" | "Raytracing") {
     this.engine.loadMode(mode);
 
     const TransformMatrix = mat4.create();
@@ -344,21 +317,59 @@ class GameEngine {
     const lights: number[] = [100, 100, 100, 0, 0, 0];
 
     for (let object of this.objects) {
+      const min_point = vec3.fromValues(Infinity, Infinity, Infinity);
+      const max_point = vec3.fromValues(-Infinity, -Infinity, -Infinity);
+
+      for (let triangle of object.triangles) {
+        for (let i = 0; i < 3; i++) {
+          const vertex = object.vertices[triangle[i]];
+
+          for (let j = 0; j < 3; j++) {
+            if (vertex[i] < min_point[i]) {
+              min_point[i] = vertex[i];
+            }
+
+            if (vertex[i] > max_point[i]) {
+              max_point[i] = vertex[i];
+            }
+          }
+        }
+      }
+
+      const scale = vec3.fromValues(
+        object.dimensions[0] / (max_point[0] - min_point[0]),
+        object.dimensions[1] / (max_point[1] - min_point[1]),
+        object.dimensions[2] / (max_point[2] - min_point[2])
+      );
+
+      const start_vertices_index = vertices.length;
       objects.push(triangles.length / 3);
-      objects.push(object.triangles.length / 3);
+      objects.push(object.triangles.length);
       objects.push(materials.length / 3);
       objects.push(-object.position[0]);
       objects.push(-object.position[1]);
       objects.push(-object.position[2]);
-      objects.push(object.dimensions[0]);
-      objects.push(object.dimensions[1]);
-      objects.push(object.dimensions[2]);
+      objects.push(object.dimensions[0] + 0.2);
+      objects.push(object.dimensions[1] + 0.2);
+      objects.push(object.dimensions[2] + 0.2);
 
-      for (let num of object.vertices) {
-        vertices.push(num);
+      for (let vertex of object.vertices) {
+        vertices.push(
+          -((vertex[0] - min_point[0]) * scale[0] + object.position[0] + 0.1)
+        );
+        vertices.push(
+          -((vertex[1] - min_point[1]) * scale[1] + object.position[1] + 0.1)
+        );
+        vertices.push(
+          -((vertex[2] - min_point[2]) * scale[2] + object.position[2] + 0.1)
+        );
+
+        console.log(vertex);
       }
-      for (let num of object.triangles) {
-        triangles.push(num);
+      for (let triangle of object.triangles) {
+        triangles.push(start_vertices_index + triangle[0]);
+        triangles.push(start_vertices_index + triangle[1]);
+        triangles.push(start_vertices_index + triangle[2]);
       }
 
       //material
@@ -379,110 +390,43 @@ class GameEngine {
       materials.push(object.material.emmissive[2]);
     }
 
-    console.log(this.objects);
-
     this.engine.setTextures(vertices, triangles, objects, materials, lights);
   }
 
   generate_world() {
     this.objects = [];
 
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const diffuseColors: number[] = [];
-    const transparency: number[] = [];
-    const indexes: number[] = [];
+    const vertices = [
+      vec3.fromValues(0, 0, 0),
+      vec3.fromValues(10, 0, 0),
+      vec3.fromValues(0, -10, 0),
+      vec3.fromValues(0, 0, 10),
+      vec3.fromValues(10, 10, 0),
+      vec3.fromValues(10, 0, 10),
+      vec3.fromValues(0, 10, 10),
+      vec3.fromValues(10, 10, 10),
+    ];
 
-    let vertex_offset = 0;
+    const triangles = [
+      vec3.fromValues(0, 1, 2),
+      vec3.fromValues(1, 2, 3),
+      vec3.fromValues(2, 3, 4),
+    ];
 
-    for (let i = 0; i < this.nb_chunk; i++) {
-      for (let j = 0; j < this.nb_chunk; j++) {
-        let chunk_x = i * this.chunk_size;
-        let chunk_y = j * this.chunk_size;
-        let chunk_z = -10;
+    const material = new Material(vec3.fromValues(1, 0, 0));
 
-        let side_length = this.side_length; //Math.max(Math.floor(this.side_length/(2**i)), 2);
-
-        let chunk = new Chunk(
-          vertex_offset,
-          [chunk_x, chunk_y, chunk_z],
-          this.chunk_size,
-          side_length
-        );
-
-        this.chunks.push(chunk);
-        chunk.generate(this.landscape);
-
-        for (let k = 0; k < chunk.positions.length; k++) {
-          positions.push(chunk.positions[k]);
-          normals.push(chunk.normals[k]);
-          diffuseColors.push(chunk.diffuseColors[k]);
-          transparency.push(chunk.transparency[k]);
-        }
-
-        for (let k = 0; k < chunk.indexes.length; k++) {
-          indexes.push(chunk.indexes[k]);
-        }
-
-        vertex_offset += side_length * side_length;
-
-        this.objects.push(
-          new GraphicObject(
-            vec3.fromValues(
-              chunk.position[0],
-              chunk.position[1],
-              chunk.position[2]
-            ),
-            vec3.fromValues(
-              this.chunk_size,
-              this.chunk_size,
-              this.chunk_size * 2
-            ),
-            chunk.positions,
-            chunk.indexes,
-            new Material()
-          )
-        );
-      }
-    }
-
-    this.engine.setBuffers(
-      positions,
-      normals,
-      diffuseColors,
-      transparency,
-      indexes
+    const my_object = new GameObject(
+      vec3.fromValues(10, -10, 10),
+      vec3.fromValues(20, 5, 8),
+      vertices,
+      triangles,
+      material,
+      []
     );
-    this.engine.nb_triangles_indexes = indexes.length;
+
+    this.objects.push(my_object);
 
     this.load_scene();
-  }
-
-  update_world() {
-    const dl = this.nb_chunk * this.chunk_size;
-
-    for (let chunk of this.chunks) {
-      let u = vec3.create();
-      let position: vec3 = [
-        chunk.position[0] + chunk.size / 2,
-        chunk.position[1] + chunk.size / 2,
-        chunk.position[2] + chunk.size / 2,
-      ];
-      vec3.subtract(u, this.player.position, position);
-
-      if (Math.round(u[0] / dl) != 0 || Math.round(u[1] / dl) != 0) {
-        chunk.position[0] += Math.round(u[0] / dl) * dl;
-        chunk.position[1] += Math.round(u[1] / dl) * dl;
-        chunk.generate(this.landscape);
-        this.engine.updateVertices(
-          chunk.vertex_offset * 3,
-          chunk.positions,
-          chunk.normals,
-          chunk.diffuseColors,
-          chunk.transparency
-        );
-      }
-    }
   }
 
   nextFrame(timestamp: number) {

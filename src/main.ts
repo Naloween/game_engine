@@ -4,25 +4,25 @@ import { createNoise2D, NoiseFunction2D } from "simplex-noise";
 // Materials
 
 // Landscape
-const altitude_max = 50;
+// const altitude_max = 50;
 
-const noise: NoiseFunction2D = createNoise2D();
+// const noise: NoiseFunction2D = createNoise2D();
 
-const landscape = (a: number, b: number) => {
-  const f = 100;
-  const detail = 6;
-  let res = 0;
+// const landscape = (a: number, b: number) => {
+//   const f = 100;
+//   const detail = 6;
+//   let res = 0;
 
-  for (let k = 0; k < detail; k++) {
-    res += (altitude_max * noise((a * 2 ** k) / f, (b * 2 ** k) / f)) / 2 ** k;
-  }
+//   for (let k = 0; k < detail; k++) {
+//     res += (altitude_max * noise((a * 2 ** k) / f, (b * 2 ** k) / f)) / 2 ** k;
+//   }
 
-  if (res < -1) {
-    res = -1;
-  }
+//   if (res < -1) {
+//     res = -1;
+//   }
 
-  return res;
-};
+//   return res;
+// };
 
 // Main
 
@@ -36,16 +36,16 @@ canvas.width = width;
 canvas.height = height;
 document.getElementById("view")!.appendChild(canvas);
 
-let game = new GameEngine(canvas, player, landscape);
+let game = new GameEngine(canvas, player);
 
 // game events
 document
   .getElementById("switch_mode_btn")
   ?.addEventListener("click", (event) => {
-    if (game.engine.mode == "Triangle") {
+    if (game.engine.mode == "Rasterization") {
       game.load_mode("Raytracing");
     } else {
-      game.load_mode("Triangle");
+      game.load_mode("Rasterization");
     }
   });
 
@@ -58,10 +58,10 @@ game.run();
 
 // TODO
 
-// Use material to make use of the ray to have beautiful graphics
+// Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
 // Use frameBuffer
 // Make object groups
-// Refacto object to make use of transform and position
+// Refacto object to make use of transform and position & use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
 // Refacto game structure
 // Graphics modes

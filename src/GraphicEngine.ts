@@ -12,95 +12,6 @@ import {
 
 // Classes
 
-class Light {
-  static next_id = 0;
-
-  id: number;
-  power: number;
-  color: vec3;
-  position: vec3;
-
-  constructor(power: number, color: vec3, position: vec3) {
-    this.power = power;
-    this.color = color;
-    this.position = position;
-    this.id = -1;
-  }
-
-  toArray() {
-    let result = [this.power];
-    result.push(this.color[0]);
-    result.push(this.color[1]);
-    result.push(this.color[2]);
-    result.push(this.position[0]);
-    result.push(this.position[1]);
-    result.push(this.position[2]);
-
-    return result;
-  }
-}
-
-class Material {
-  static next_id = 0;
-
-  id: number;
-
-  metallic: vec3; //reflection irror like
-  albedo: vec3; // the color of the material (for diffusion)
-  transparency: vec3; // the transparency of the material percentage that get out for 1m
-  ior: vec3; // index of refraction ou IOR
-  emmissive: vec3; // amount of light emited for rgb
-
-  constructor(
-    albedo: vec3 = [1, 1, 1],
-    transparency: vec3 = [0, 0, 0],
-    metallic: vec3 = [0, 0, 0],
-    ior: vec3 = [1, 1, 1],
-    emmissive: vec3 = [0, 0, 0]
-  ) {
-    this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
-    this.transparency = transparency;
-    this.metallic = metallic; // entre 0 et 1
-    this.ior = ior; //n1*sin(i) = n2*sin(r)
-    this.emmissive = emmissive;
-
-    this.id = -1;
-  }
-
-  toArray() {
-    let result = Array(this.albedo);
-    result = result.concat(this.transparency);
-    result = result.concat(this.metallic);
-    result = result.concat(this.ior);
-    result = result.concat(this.emmissive);
-
-    return result; //[albedo, transparency, metallic, ior, emmissive]
-  }
-}
-
-class GraphicObject {
-  position: vec3;
-  dimensions: vec3;
-
-  triangles: number[];
-  vertices: number[];
-  material: Material;
-
-  constructor(
-    position: vec3,
-    dimensions: vec3,
-    vertices: number[],
-    triangles: number[],
-    material: Material
-  ) {
-    this.position = position;
-    this.dimensions = dimensions;
-    this.vertices = vertices;
-    this.triangles = triangles;
-    this.material = material;
-  }
-}
-
 class Camera {
   width: number;
   height: number;
@@ -186,7 +97,7 @@ class GraphicEngine {
   shaderProgram: WebGLProgram;
 
   nb_triangles_indexes = 0;
-  mode: "Triangle" | "Raytracing";
+  mode: "Rasterization" | "Raytracing";
 
   // buffers
 
@@ -256,7 +167,7 @@ class GraphicEngine {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
     // Tell WebGL which indices to use to index the vertices
-    if (this.mode == "Triangle") {
+    if (this.mode == "Rasterization") {
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.trianglesBuffer);
       this.gl.drawElements(
         this.gl.TRIANGLES,
@@ -270,7 +181,7 @@ class GraphicEngine {
     }
   }
 
-  loadMode(mode: "Triangle" | "Raytracing") {
+  loadMode(mode: "Rasterization" | "Raytracing") {
     this.mode = mode;
 
     this.shaderProgram = this.initShaderProgram()!;
@@ -284,7 +195,7 @@ class GraphicEngine {
     let vertexShader: WebGLShader | null = null;
     let fragmentShader: WebGLShader | null = null;
 
-    if (this.mode == "Triangle") {
+    if (this.mode == "Rasterization") {
       vertexShader = this.loadShader(
         this.gl.VERTEX_SHADER,
         TriangleVertexShaderSource
@@ -511,7 +422,7 @@ class GraphicEngine {
   }
 
   loadLocations() {
-    if (this.mode == "Triangle") {
+    if (this.mode == "Rasterization") {
       // uniforms locations
       this.projectionMatrixLocation = this.gl.getUniformLocation(
         this.shaderProgram,
@@ -852,7 +763,7 @@ class GraphicEngine {
 
   setCameraUniforms(camera: Camera) {
     // Set the shader uniform projection matrix
-    if (this.mode == "Triangle") {
+    if (this.mode == "Rasterization") {
       this.gl.uniformMatrix4fv(
         this.projectionMatrixLocation,
         false,
@@ -900,7 +811,7 @@ class GraphicEngine {
 
   setTransformVertices(TransformMatrix: mat4) {
     // Set the shader uniforms
-    if (this.mode == "Triangle") {
+    if (this.mode == "Rasterization") {
       this.gl.uniformMatrix4fv(
         this.TransformMatrixLocation,
         false,
@@ -910,4 +821,4 @@ class GraphicEngine {
   }
 }
 
-export { Light, GraphicObject, Material, Camera, GraphicEngine };
+export { Camera, GraphicEngine };
