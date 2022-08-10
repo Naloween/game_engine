@@ -2,7 +2,7 @@
 // import * as mat4 from "./glMatrix/src/mat4.js";
 // import * as vec3 from "./glMatrix/src/vec3.js";
 
-import { Camera, GraphicEngine, Light } from "./GraphicEngine";
+import { Camera, GraphicEngine } from "./GraphicEngine";
 import { vec3, mat4 } from "gl-matrix";
 
 class Player {
@@ -165,23 +165,29 @@ class GameObject {
 
   triangles: vec3[];
   vertices: vec3[];
-  innerObjects: GameObject[];
+  parent_object: GameObject | null = null;
+  innerObjects: GameObject[] = [];
   material: Material;
+
+  array_index = -1;
 
   constructor(
     position: vec3,
     dimensions: vec3,
     vertices: vec3[],
     triangles: vec3[],
-    material: Material,
-    innerObjects: GameObject[] = []
+    material: Material
   ) {
     this.position = position;
     this.dimensions = dimensions;
     this.vertices = vertices;
     this.triangles = triangles;
     this.material = material;
-    this.innerObjects = innerObjects;
+  }
+
+  addInnerObject(object: GameObject) {
+    object.parent_object = this;
+    this.innerObjects.push(object);
   }
 }
 
@@ -309,6 +315,91 @@ class GameEngine {
     );
   }
 
+  addObjectToArrays(
+    object: GameObject,
+    objects_array: number[],
+    vertices: number[],
+    triangles: number[],
+    materials: number[]
+  ) {
+    const min_point = vec3.fromValues(Infinity, Infinity, Infinity);
+    const max_point = vec3.fromValues(-Infinity, -Infinity, -Infinity);
+
+    for (let triangle of object.triangles) {
+      for (let i = 0; i < 3; i++) {
+        const vertex = object.vertices[triangle[i]];
+
+        for (let j = 0; j < 3; j++) {
+          if (vertex[i] < min_point[i]) {
+            min_point[i] = vertex[i];
+          }
+
+          if (vertex[i] > max_point[i]) {
+            max_point[i] = vertex[i];
+          }
+        }
+      }
+    }
+
+    const scale = vec3.fromValues(
+      object.dimensions[0] / (max_point[0] - min_point[0]),
+      object.dimensions[1] / (max_point[1] - min_point[1]),
+      object.dimensions[2] / (max_point[2] - min_point[2])
+    );
+
+    objects_array.push(
+      object.innerObjects.length > 0
+        ? object.innerObjects[0].array_index * 4
+        : 0
+    );
+    objects_array.push(object.innerObjects.length);
+    objects_array.push(0);
+    objects_array.push(triangles.length / 3);
+    objects_array.push(object.triangles.length);
+    objects_array.push(materials.length / 3);
+    objects_array.push(-object.position[0]);
+    objects_array.push(-object.position[1]);
+    objects_array.push(-object.position[2]);
+    objects_array.push(object.dimensions[0] + 0.2);
+    objects_array.push(object.dimensions[1] + 0.2);
+    objects_array.push(object.dimensions[2] + 0.2);
+
+    const start_vertices_index = vertices.length;
+    for (let vertex of object.vertices) {
+      vertices.push(
+        -((vertex[0] - min_point[0]) * scale[0] + object.position[0] + 0.1)
+      );
+      vertices.push(
+        -((vertex[1] - min_point[1]) * scale[1] + object.position[1] + 0.1)
+      );
+      vertices.push(
+        -((vertex[2] - min_point[2]) * scale[2] + object.position[2] + 0.1)
+      );
+    }
+    for (let triangle of object.triangles) {
+      triangles.push(start_vertices_index + triangle[0]);
+      triangles.push(start_vertices_index + triangle[1]);
+      triangles.push(start_vertices_index + triangle[2]);
+    }
+
+    //material
+    materials.push(object.material.albedo[0]);
+    materials.push(object.material.albedo[1]);
+    materials.push(object.material.albedo[2]);
+    materials.push(object.material.transparency[0]);
+    materials.push(object.material.transparency[1]);
+    materials.push(object.material.transparency[2]);
+    materials.push(object.material.metallic[0]);
+    materials.push(object.material.metallic[1]);
+    materials.push(object.material.metallic[2]);
+    materials.push(object.material.ior[0]);
+    materials.push(object.material.ior[1]);
+    materials.push(object.material.ior[2]);
+    materials.push(object.material.emmissive[0]);
+    materials.push(object.material.emmissive[1]);
+    materials.push(object.material.emmissive[2]);
+  }
+
   load_scene() {
     const vertices: number[] = [];
     const triangles: number[] = [];
@@ -316,79 +407,41 @@ class GameEngine {
     const materials: number[] = [];
     const lights: number[] = [100, 100, 100, 0, 0, 0];
 
+    const worldObject = new GameObject(
+      vec3.fromValues(0, 0, 0),
+      vec3.fromValues(1, 1, 1),
+      [],
+      [],
+      new Material()
+    );
+
     for (let object of this.objects) {
-      const min_point = vec3.fromValues(Infinity, Infinity, Infinity);
-      const max_point = vec3.fromValues(-Infinity, -Infinity, -Infinity);
-
-      for (let triangle of object.triangles) {
-        for (let i = 0; i < 3; i++) {
-          const vertex = object.vertices[triangle[i]];
-
-          for (let j = 0; j < 3; j++) {
-            if (vertex[i] < min_point[i]) {
-              min_point[i] = vertex[i];
-            }
-
-            if (vertex[i] > max_point[i]) {
-              max_point[i] = vertex[i];
-            }
-          }
-        }
-      }
-
-      const scale = vec3.fromValues(
-        object.dimensions[0] / (max_point[0] - min_point[0]),
-        object.dimensions[1] / (max_point[1] - min_point[1]),
-        object.dimensions[2] / (max_point[2] - min_point[2])
-      );
-
-      const start_vertices_index = vertices.length;
-      objects.push(triangles.length / 3);
-      objects.push(object.triangles.length);
-      objects.push(materials.length / 3);
-      objects.push(-object.position[0]);
-      objects.push(-object.position[1]);
-      objects.push(-object.position[2]);
-      objects.push(object.dimensions[0] + 0.2);
-      objects.push(object.dimensions[1] + 0.2);
-      objects.push(object.dimensions[2] + 0.2);
-
-      for (let vertex of object.vertices) {
-        vertices.push(
-          -((vertex[0] - min_point[0]) * scale[0] + object.position[0] + 0.1)
-        );
-        vertices.push(
-          -((vertex[1] - min_point[1]) * scale[1] + object.position[1] + 0.1)
-        );
-        vertices.push(
-          -((vertex[2] - min_point[2]) * scale[2] + object.position[2] + 0.1)
-        );
-
-        console.log(vertex);
-      }
-      for (let triangle of object.triangles) {
-        triangles.push(start_vertices_index + triangle[0]);
-        triangles.push(start_vertices_index + triangle[1]);
-        triangles.push(start_vertices_index + triangle[2]);
-      }
-
-      //material
-      materials.push(object.material.albedo[0]);
-      materials.push(object.material.albedo[1]);
-      materials.push(object.material.albedo[2]);
-      materials.push(object.material.transparency[0]);
-      materials.push(object.material.transparency[1]);
-      materials.push(object.material.transparency[2]);
-      materials.push(object.material.metallic[0]);
-      materials.push(object.material.metallic[1]);
-      materials.push(object.material.metallic[2]);
-      materials.push(object.material.ior[0]);
-      materials.push(object.material.ior[1]);
-      materials.push(object.material.ior[2]);
-      materials.push(object.material.emmissive[0]);
-      materials.push(object.material.emmissive[1]);
-      materials.push(object.material.emmissive[2]);
+      worldObject.addInnerObject(object);
     }
+
+    let next_object_idndex = 0;
+
+    const objectsToAdd: GameObject[] = [worldObject];
+
+    // Make so that the objects are in the right order, each inner objects are successive
+    let object_index = 0;
+    while (object_index < objectsToAdd.length) {
+      const object = objectsToAdd[object_index];
+      object.array_index = next_object_idndex;
+      next_object_idndex++;
+
+      for (let inner_object of object.innerObjects) {
+        objectsToAdd.push(inner_object);
+      }
+
+      object_index++;
+    }
+
+    for (let object of objectsToAdd) {
+      this.addObjectToArrays(object, objects, vertices, triangles, materials);
+    }
+
+    console.log(objects);
 
     this.engine.setTextures(vertices, triangles, objects, materials, lights);
   }
@@ -415,16 +468,24 @@ class GameEngine {
 
     const material = new Material(vec3.fromValues(1, 0, 0));
 
-    const my_object = new GameObject(
-      vec3.fromValues(10, -10, 10),
-      vec3.fromValues(20, 5, 8),
+    const my_object2 = new GameObject(
+      vec3.fromValues(0, 0, 0),
+      vec3.fromValues(1, 1, 1),
       vertices,
       triangles,
-      material,
-      []
+      material
+    );
+
+    const my_object = new GameObject(
+      vec3.fromValues(10, -10, 10),
+      vec3.fromValues(20, 50, 10),
+      vertices,
+      triangles,
+      material
     );
 
     this.objects.push(my_object);
+    this.objects.push(my_object2);
 
     this.load_scene();
   }

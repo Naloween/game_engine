@@ -656,8 +656,8 @@ class GraphicEngine {
     materials: number[],
     light_sources: number[]
   ) {
-    console.log(this.gl.MAX_TEXTURE_SIZE);
-    console.log(vertices.length / 3);
+    // console.log(this.gl.MAX_TEXTURE_SIZE);
+    // console.log(vertices.length / 3);
 
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
     this.gl.texImage2D(

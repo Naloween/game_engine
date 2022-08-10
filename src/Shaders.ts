@@ -72,11 +72,16 @@ const RayTracingFragmentShaderSource =
 
     struct Object
     {
+        float inner_objects_index;
+        float nb_inner_objects;
+        //_;
+
         float triangle_index;
         float nb_triangles;
         float material_index;
 
         vec3 position;
+
         vec3 dimensions;
     };
 
@@ -270,37 +275,50 @@ const RayTracingFragmentShaderSource =
         vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
 
 
-        float diaphragme = 0.5;
-        float max_distance = 1000000000.0;
+
         int step = 0;
         int max_step = 20;
         float distance = 0.;
-        Material current_material;
         vec3 cast_point = uCameraPosition;
-        vec3 inLight = vec3(0.,0.,0.);
+
         float ray_percentage = 1.;
+        vec3 inLight = vec3(0.,0.,0.);
+        float diaphragme = 0.5;
+
+        float parent_object_index = 0.;
+        Material current_material;
 
         // All ray steps
-        while (distance < max_distance && step < max_step && ray_percentage > 0.1){
-            // loop on objects
+        while (step < max_step && ray_percentage > 0.){
+
+            vec4 parent_object_inner_objects = texture(uObjects, vec2( (parent_object_index + 0.5) / float(objects_sizes.x) ));
+            vec4 parent_object_indices = texture(uObjects, vec2( (parent_object_index + 1. + 0.5) / float(objects_sizes.x) ));
+            vec4 parent_object_position = texture(uObjects, vec2( (parent_object_index + 2. + 0.5) / float(objects_sizes.x) ));
+            vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));
+            Object parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    
+
+            float nb_inner_objects =  parent_object.nb_inner_objects;
+
+            // loop on inner objects
     
             float t = -1.; // distance to next intersection point
             float next_t = -1.;
             
-            // Find closest object
+            // Find closest inner_object
 
             Object closest_object;
             bool hitting_object = false;
-            float object_index = 0.;
+            float inner_object_index = parent_object.inner_objects_index;
 
-            while (object_index < float(objects_sizes.x)){
+            while (inner_object_index < parent_object.inner_objects_index + 4.*nb_inner_objects){
     
-                vec4 object_indices = texture(uObjects, vec2( (object_index + 0.5) / float(objects_sizes.x) ));
-                vec4 object_position = texture(uObjects, vec2( (object_index + 1. + 0.5) / float(objects_sizes.x) ));
-                vec4 object_dimensions = texture(uObjects, vec2( (object_index + 2. + 0.5) / float(objects_sizes.x) ));
-                Object object = Object(object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);
+                vec4 object_inner_objects = texture(uObjects, vec2( (inner_object_index + 0.5) / float(objects_sizes.x) ));
+                vec4 object_indices = texture(uObjects, vec2( (inner_object_index + 1. + 0.5) / float(objects_sizes.x) ));
+                vec4 object_position = texture(uObjects, vec2( (inner_object_index + 2. + 0.5) / float(objects_sizes.x) ));
+                vec4 object_dimensions = texture(uObjects, vec2( (inner_object_index + 3. + 0.5) / float(objects_sizes.x) ));
+                Object inner_object = Object(object_inner_objects.x, object_inner_objects.y, object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);
     
-                vec2 min_max_t = intersectBox(cast_point, direction, object.position, object.dimensions);
+                vec2 min_max_t = intersectBox(cast_point, direction, inner_object.position, inner_object.dimensions);
                 float min_t = min_max_t.x;
                 float max_t = min_max_t.y;
     
@@ -309,24 +327,29 @@ const RayTracingFragmentShaderSource =
 
                     if (t<0. || t_object < t){
                         hitting_object = true;
-                        closest_object = object;
+                        closest_object = inner_object;
                         t = t_object;
                         next_t = max_t - t + 0.01;
                     }
                 }
     
-                object_index += 3.;
+                inner_object_index += 4.;
     
             }
     
-            // Go in closest object and intersect its triangles
+            // Go in closest inner_object
 
             if (hitting_object){
+
 
                 // change step
                 cast_point = cast_point + t * direction;
                 distance += t;
                 t = -1.;
+
+                // intersect its inner_objects
+
+                // intersect its triangles
 
                 // Material
     
