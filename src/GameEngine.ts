@@ -473,7 +473,7 @@ class GameEngine {
     const width = 20;
     const height = 20;
 
-    for (let k = 0; k < 1; k++) {
+    for (let k = 0; k < 2; k++) {
       for (let k2 = 0; k2 < 10; k2++) {
         const my_object = new GameObject(
           vec3.fromValues((height + 1) * k, (width + 1) * k2, -8),

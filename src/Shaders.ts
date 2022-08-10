@@ -476,8 +476,8 @@ const RayTracingFragmentShaderSource =
             step++;
         }
 
+        return vec3(float(step)/float(max_step));
         // return vec3(distance/300.);
-        // return vec3(float(step)/float(max_step));
         return diaphragme * inLight;
     }
 
