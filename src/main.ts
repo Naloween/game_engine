@@ -55,13 +55,15 @@ game.run();
 
 // Use WebGL
 // Make game environment
+// Static object dimensions (in game engine)
 
 // TODO
 
+// Inner objects in shader
 // Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
 // Use frameBuffer
-// Make object groups
-// Refacto object to make use of transform and position & use different primitives (other than triangles, spheres etc...)
+// Dynamic object position and scale (point to the same mesh but with transforms)
+// use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
 // Refacto game structure
 // Graphics modes

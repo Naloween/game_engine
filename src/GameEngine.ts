@@ -353,7 +353,9 @@ class GameEngine {
         : 0
     );
     objects_array.push(object.innerObjects.length);
-    objects_array.push(0);
+    objects_array.push(
+      object.parent_object == null ? -1 : object.parent_object.array_index * 4
+    );
     objects_array.push(triangles.length / 3);
     objects_array.push(object.triangles.length);
     objects_array.push(materials.length / 3);
@@ -364,7 +366,7 @@ class GameEngine {
     objects_array.push(object.dimensions[1] + 0.2);
     objects_array.push(object.dimensions[2] + 0.2);
 
-    const start_vertices_index = vertices.length;
+    const start_vertices_index = vertices.length / 3;
     for (let vertex of object.vertices) {
       vertices.push(
         -((vertex[0] - min_point[0]) * scale[0] + object.position[0] + 0.1)
@@ -468,24 +470,40 @@ class GameEngine {
 
     const material = new Material(vec3.fromValues(1, 0, 0));
 
-    const my_object2 = new GameObject(
-      vec3.fromValues(0, 0, 0),
-      vec3.fromValues(1, 1, 1),
-      vertices,
-      triangles,
-      material
-    );
+    const width = 20;
+    const height = 20;
 
-    const my_object = new GameObject(
-      vec3.fromValues(10, -10, 10),
-      vec3.fromValues(20, 50, 10),
-      vertices,
-      triangles,
-      material
-    );
+    for (let k = 0; k < 1; k++) {
+      for (let k2 = 0; k2 < 10; k2++) {
+        const my_object = new GameObject(
+          vec3.fromValues((height + 1) * k, (width + 1) * k2, -8),
+          vec3.fromValues(height, width, 10),
+          vertices,
+          triangles,
+          material
+        );
 
-    this.objects.push(my_object);
-    this.objects.push(my_object2);
+        for (let i = 0; i < 10; i++) {
+          for (let j = 0; j < 10; j++) {
+            const my_object2 = new GameObject(
+              vec3.fromValues(
+                2 * i + (height + 1) * k,
+                2 * j + (width + 1) * k2,
+                0
+              ),
+              vec3.fromValues(1, 1, 1),
+              vertices,
+              triangles,
+              material
+            );
+            // this.objects.push(my_object2);
+            my_object.addInnerObject(my_object2);
+          }
+        }
+
+        this.objects.push(my_object);
+      }
+    }
 
     this.load_scene();
   }
