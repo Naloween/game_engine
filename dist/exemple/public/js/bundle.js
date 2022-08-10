@@ -8459,17 +8459,17 @@ var GameEngine = /** @class */ (function () {
         this.objects = [];
         var vertices = [
             gl_matrix_1.vec3.fromValues(0, 0, 0),
-            gl_matrix_1.vec3.fromValues(10, 0, 0),
-            gl_matrix_1.vec3.fromValues(0, -10, 0),
-            gl_matrix_1.vec3.fromValues(0, 0, 10),
-            gl_matrix_1.vec3.fromValues(10, 10, 0),
-            gl_matrix_1.vec3.fromValues(10, 0, 10),
-            gl_matrix_1.vec3.fromValues(0, 10, 10),
-            gl_matrix_1.vec3.fromValues(10, 10, 10),
+            gl_matrix_1.vec3.fromValues(1, 0, 0),
+            gl_matrix_1.vec3.fromValues(0, 1, 0),
+            gl_matrix_1.vec3.fromValues(1, 1, 0),
+            gl_matrix_1.vec3.fromValues(0.5, 0.5, 0.5),
         ];
         var triangles = [
             gl_matrix_1.vec3.fromValues(0, 1, 2),
             gl_matrix_1.vec3.fromValues(1, 2, 3),
+            gl_matrix_1.vec3.fromValues(0, 1, 4),
+            gl_matrix_1.vec3.fromValues(0, 2, 4),
+            gl_matrix_1.vec3.fromValues(1, 3, 4),
             gl_matrix_1.vec3.fromValues(2, 3, 4),
         ];
         var material = new Material(gl_matrix_1.vec3.fromValues(1, 0, 0));

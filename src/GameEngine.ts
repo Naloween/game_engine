@@ -451,18 +451,18 @@ class GameEngine {
 
     const vertices = [
       vec3.fromValues(0, 0, 0),
-      vec3.fromValues(10, 0, 0),
-      vec3.fromValues(0, -10, 0),
-      vec3.fromValues(0, 0, 10),
-      vec3.fromValues(10, 10, 0),
-      vec3.fromValues(10, 0, 10),
-      vec3.fromValues(0, 10, 10),
-      vec3.fromValues(10, 10, 10),
+      vec3.fromValues(1, 0, 0),
+      vec3.fromValues(0, 1, 0),
+      vec3.fromValues(1, 1, 0),
+      vec3.fromValues(0.5, 0.5, 0.5),
     ];
 
     const triangles = [
       vec3.fromValues(0, 1, 2),
       vec3.fromValues(1, 2, 3),
+      vec3.fromValues(0, 1, 4),
+      vec3.fromValues(0, 2, 4),
+      vec3.fromValues(1, 3, 4),
       vec3.fromValues(2, 3, 4),
     ];
 
