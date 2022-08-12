@@ -123,7 +123,8 @@ const RayTracingFragmentShaderSource =
     // Functions
 
     float rand(float seed);
-    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle);
+    vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes);
+    float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2);
     vec2 intersectBox(vec3 position, vec3 dimensions);
     bool inBox(vec3 position, vec3 box_position, vec3 dimensions);
     vec3 getPixelColor();
@@ -133,13 +134,54 @@ const RayTracingFragmentShaderSource =
         return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
     }
 
-    float intersecTriangle(vec3 cast_point, vec3 direction, uvec4 triangle, ivec2 vertices_sizes){
+    vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes){
 
-        float vertices_width = float(vertices_sizes.x);
+        float t = -1. ;
+        vec3 normale = vec3(0.,0.,0.);
+        float triangle_index = object.triangle_index;
 
-        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;
-        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
-        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
+        while (triangle_index < object.triangle_index + object.nb_triangles){
+            
+            // coords of texture between 0 and 1 (looped so 1.x = 0.x)
+            vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );
+            uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
+
+            float vertices_width = float(vertices_sizes.x);
+
+            vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;
+            vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
+            vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
+
+            v0 = object.position + v0 * object.dimensions;
+            v1 = object.position + v1 * object.dimensions;
+            v2 = object.position + v2 * object.dimensions;
+
+            float t_triangle = intersectTriangle(cast_point, direction, v0, v1, v2);
+
+            vec3 hitPointTriangle = cast_point + t_triangle * direction;
+            bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);
+            if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){
+                t = t_triangle;
+
+                // Get normale
+                float vertices_width = float(vertices_sizes.x);
+                vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;
+                vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
+                vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
+                
+                normale = cross(v1 - v0, v2 - v0);
+                normale = normalize(normale);
+                // float area = length(normale); 
+                // normale /= area;
+            }
+
+            triangle_index++;
+        }
+
+        return vec4(t, normale);
+    }
+
+    float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2){
 
         // Compute plane normale
         
@@ -302,8 +344,8 @@ const RayTracingFragmentShaderSource =
 
             // loop on inner objects
     
-            float t = -1.; // distance to next intersection point
             float next_t = -1.;
+            float t_object = -1.;
             
             // Find closest inner_object
 
@@ -324,13 +366,13 @@ const RayTracingFragmentShaderSource =
                 float max_t = min_max_t.y;
     
                 if (min_t < max_t && max_t>0.){ // Si le rayon intersect la box
-                    float t_object = max(min_t, 0.); // Si min_t < 0. on est dans l'objet
+                    float t = max(min_t, 0.); // Si min_t < 0. on est dans l'objet
 
-                    if (t<0. || t_object < t){
+                    if (t_object<0. || t < t_object){
                         hitting_object = true;
                         closest_object = inner_object;
-                        t = t_object;
-                        next_t = max_t - t + 0.01;
+                        t_object = t;
+                        next_t = max_t - t_object + 0.01;
                     }
                 }
     
@@ -346,9 +388,8 @@ const RayTracingFragmentShaderSource =
 
 
                 // change step
-                cast_point = cast_point + t * direction;
-                distance += t;
-                t = -1.;
+                cast_point = cast_point + t_object * direction;
+                distance += t_object;
 
                 if (closest_object.nb_inner_objects > 0.){
 
@@ -358,8 +399,6 @@ const RayTracingFragmentShaderSource =
 
                 } else {
 
-                    // intersect its triangles
-    
                     // Material
         
                     vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));
@@ -370,54 +409,27 @@ const RayTracingFragmentShaderSource =
                     
                     Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);
         
-                    // loop on triangles
-                    bool hitting_triangle = false;
-                    float triangle_index = closest_object.triangle_index;
-                    vec3 normale;
-            
-                    while (triangle_index < closest_object.triangle_index + closest_object.nb_triangles){
-            
-                        // coords of texture between 0 and 1 (looped so 1.x = 0.x)
-                        vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );
-                        uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.
-            
-                        float t_triangle = intersecTriangle(cast_point, direction, triangle, vertices_sizes);
-        
-                        vec3 hitPointTriangle = cast_point + t_triangle * direction;
-                        bool is_in_box = inBox(hitPointTriangle, closest_object.position, closest_object.dimensions);
-                        if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){
-                            t = t_triangle;
-                            current_material = material;
-                            hitting_triangle = true;
-    
-                            // Get normale
-                            float vertices_width = float(vertices_sizes.x);
-                            vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;
-                            vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
-                            vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
-                            
-                            normale = cross(v1 - v0, v2 - v0);
-                            normale = normalize(normale);
-                            // float area = length(normale); 
-                            // normale /= area;
-                        }
-        
-                        triangle_index++;
-                    }
+                    // intersect Mesh
 
+                    vec4 res = intersectMesh(closest_object, cast_point, direction, vertices_sizes, triangles_sizes);
+
+                    float t_mesh = res.r;
+                    vec3 normale = res.gba;
                     
                     float box_transparency = 0.9;
 
-                    if (hitting_triangle){
+                    if (t_mesh > 0.){
+
+                        current_material = material;
 
                         // box color (transparent)
-                        float light_throug = pow(box_transparency, t);
+                        float light_throug = pow(box_transparency, t_mesh);
                         inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);
 
                         // increment cast point
                         ray_percentage *= light_throug;
-                        cast_point = cast_point + t * direction;
-                        distance += t;
+                        cast_point = cast_point + t_mesh * direction;
+                        distance += t_mesh;
                         
                         // Reflection
                         float reflection_coef = 0.5;
@@ -452,6 +464,8 @@ const RayTracingFragmentShaderSource =
                     break;
                 } else { // we go to parent box
 
+                    return vec3(1.,0.,0.);
+
                     // Move cast point
 
 
@@ -476,7 +490,7 @@ const RayTracingFragmentShaderSource =
             step++;
         }
 
-        return vec3(float(step)/float(max_step));
+        // return vec3(float(step)/float(max_step));
         // return vec3(distance/300.);
         return diaphragme * inLight;
     }

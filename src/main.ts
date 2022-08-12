@@ -56,12 +56,13 @@ game.run();
 // Use WebGL
 // Make game environment
 // Static object dimensions (in game engine)
+// Inner objects in shader
 
 // TODO
 
-// Inner objects in shader
 // Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
 // Use frameBuffer
+// Incrementing the data usage of texture by using lines
 // Dynamic object position and scale (point to the same mesh but with transforms)
 // use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
