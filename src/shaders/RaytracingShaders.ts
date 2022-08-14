@@ -164,9 +164,9 @@ float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 
 }
 
 bool inBox(vec3 position, vec3 box_position, vec3 dimensions){
-    return position.x < box_position.x && position.x > box_position.x - dimensions.x
-    && position.y < box_position.y && position.y > box_position.y - dimensions.y
-    && position.z < box_position.z && position.z > box_position.z - dimensions.z;
+    return position.x > box_position.x && position.x < box_position.x + dimensions.x
+    && position.y > box_position.y && position.y < box_position.y + dimensions.y
+    && position.z > box_position.z && position.z < box_position.z + dimensions.z;
 }
 
 vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){
@@ -175,18 +175,18 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
 
     float t0 = (position.x - cast_point.x) / direction.x;
     vec3 M0 = cast_point + t0 * direction;
-    float t1 = (position.x - dimensions.x - cast_point.x) / direction.x;
+    float t1 = (position.x + dimensions.x - cast_point.x) / direction.x;
     vec3 M1 = cast_point + t1 * direction;
     float t2 = (position.y - cast_point.y) / direction.y;
     vec3 M2 = cast_point + t2 * direction;
-    float t3 = (position.y - dimensions.y - cast_point.y) / direction.y;
+    float t3 = (position.y + dimensions.y - cast_point.y) / direction.y;
     vec3 M3 = cast_point + t3 * direction;
     float t4 = (position.z - cast_point.z) / direction.z;
     vec3 M4 = cast_point + t4 * direction;
-    float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;
+    float t5 = (position.z + dimensions.z - cast_point.z) / direction.z;
     vec3 M5 = cast_point + t5 * direction;
 
-    if (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z){
+    if (M0.y > position.y && M0.y<position.y+dimensions.y && M0.z>position.z && M0.z<position.z+dimensions.z){
         if (t0 < min_t){
             min_t = t0;
         }
@@ -194,7 +194,7 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
             max_t = t0;
         }
     }
-    if (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z){
+    if (M1.y > position.y && M1.y<position.y+dimensions.y && M1.z>position.z && M1.z<position.z+dimensions.z){
         if (t1 < min_t){
             min_t = t1;
         }
@@ -202,7 +202,7 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
             max_t = t1;
         }
     }
-    if (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z){
+    if (M2.x > position.x && M2.x<position.x+dimensions.x && M2.z>position.z && M2.z<position.z+dimensions.z){
         if (t2 < min_t){
             min_t = t2;
         }
@@ -210,7 +210,7 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
             max_t = t2;
         }
     }
-    if (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z){
+    if (M3.x > position.x && M3.x<position.x+dimensions.x && M3.z>position.z && M3.z<position.z+dimensions.z){
         if (t3 < min_t){
             min_t = t3;
         }
@@ -218,7 +218,7 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
             max_t = t3;
         }
     }
-    if (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x){
+    if (M4.y > position.y && M4.y<position.y+dimensions.y && M4.x>position.x && M4.x<position.x+dimensions.x){
         if (t4 < min_t){
             min_t = t4;
         }
@@ -226,7 +226,7 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
             max_t = t4;
         }
     }
-    if (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x){
+    if (M5.y > position.y && M5.y<position.y+dimensions.y && M5.x>position.x && M5.x<position.x+dimensions.x){
         if (t5 < min_t){
             min_t = t5;
         }
@@ -254,7 +254,7 @@ vec3 getPixelColor(){
     float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;
     float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;
 
-    vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);
+    vec3 direction =  uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz;
     direction = normalize(direction);
 
     // skybox_color defined by the direction
@@ -377,9 +377,9 @@ vec3 getPixelColor(){
                         float c = dot(direction, normale);
 
                         if (c < 0.){
-                            direction -= 2. * dot(direction, normale) * normale;
-                        } else {
                             direction += 2. * dot(direction, normale) * normale;
+                        } else {
+                            direction -= 2. * dot(direction, normale) * normale;
                         }
                         direction = normalize(direction);
                     } else {

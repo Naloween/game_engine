@@ -80,7 +80,7 @@ game.run();
 // use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
 // Refacto game structure
-// See (again) about direction and why coords are reversed (reversed direction and reversed coords)
+// See (again) about direction and why coords are reversed (reversed direction and reversed coords objects and triangles)
 // Create the game engine app
 // App file structure
 // Installer

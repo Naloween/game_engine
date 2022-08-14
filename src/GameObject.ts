@@ -62,9 +62,9 @@ class Mesh {
       const start_vertices_index = vertices.length / 3;
 
       for (let vertex of this.vertices) {
-        vertices.push(-vertex[0]);
-        vertices.push(-vertex[1]);
-        vertices.push(-vertex[2]);
+        vertices.push(vertex[0]);
+        vertices.push(vertex[1]);
+        vertices.push(vertex[2]);
       }
       for (let triangle of this.triangles) {
         triangles.push(start_vertices_index + triangle[0]);
@@ -147,9 +147,9 @@ class GameObject {
     objects_array.push(this.mesh.triangles.length);
     objects_array.push(this.material.array_index);
 
-    objects_array.push(-this.position[0]);
-    objects_array.push(-this.position[1]);
-    objects_array.push(-this.position[2]);
+    objects_array.push(this.position[0]);
+    objects_array.push(this.position[1]);
+    objects_array.push(this.position[2]);
 
     objects_array.push(this.dimensions[0] + 0.2);
     objects_array.push(this.dimensions[1] + 0.2);

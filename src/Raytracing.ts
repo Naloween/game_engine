@@ -440,9 +440,9 @@ class Raytracing extends GraphicMode {
     // Set the shader uniform camera position
     this.gl.uniform3f(
       this.cameraPositionLocation,
-      -camera.position[0],
-      -camera.position[1],
-      -camera.position[2]
+      camera.position[0],
+      camera.position[1],
+      camera.position[2]
     );
   }
 }
