@@ -79,8 +79,8 @@ vec3 getPixelColor();
 
 float rand(float x){
     // return 0.;
-    float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x);
-    return a - floor(a);
+    float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)/10.;
+    return a -  floor(a);
     // return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
 }
 
@@ -134,9 +134,7 @@ vec4 intersectMesh(vec3 object_absolute_position, vec3 object_absolute_dimension
 float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2){
     // Compute plane normale
     
-    vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize
-    float area = length(normale); 
-    normale /= area;
+    vec3 normale = normalize(cross(v1 - v0, v2 - v0));
 
     // check if ray parallel to triangle
     // float NdotRayDirection = dot(normale, direction); 
@@ -299,6 +297,7 @@ vec3 getPixelColor(){
 
         Object closest_object;
         bool hitting_object = false;
+        vec3 dh = vec3(0.1);
 
         while (inner_object_index < parent_object.inner_objects_index + 4.*nb_inner_objects){
             vec4 object_inner_objects = texture(uObjects, vec2( (inner_object_index + 0.5) / float(objects_sizes.x) ));
@@ -374,13 +373,20 @@ vec3 getPixelColor(){
                     
                     // Reflection
                     if (rand(float(step)) < material.metallic.x){
-                        direction -= 2. * dot(direction, normale) * normale;
+                        cast_point -= 0.001 * direction;
+                        float c = dot(direction, normale);
+
+                        if (c < 0.){
+                            direction -= 2. * dot(direction, normale) * normale;
+                        } else {
+                            direction += 2. * dot(direction, normale) * normale;
+                        }
                         direction = normalize(direction);
-                        cast_point = cast_point + 0.01 * direction;
                     } else {
                         // triangle light
                         vec3 triangle_light = material.emmissive;
                         inLight += ray_percentage*triangle_light;
+                        cast_point = cast_point + 0.001 * direction;
                         break;
                     }
 
@@ -395,6 +401,7 @@ vec3 getPixelColor(){
             }
         } else {
             if (parent_object.parent_object_index < 0.){ // we hit the skybox
+                sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
                 inLight += ray_percentage*sky_box_color;
                 // inLight = vec3(ray_percentage);
                 break;

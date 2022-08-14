@@ -330,10 +330,10 @@ class GameEngine {
 
     const triangles = [
       vec3.fromValues(0, 1, 2),
-      vec3.fromValues(1, 2, 3),
-      vec3.fromValues(0, 1, 4),
+      vec3.fromValues(1, 3, 2),
+      vec3.fromValues(0, 4, 1),
       vec3.fromValues(0, 2, 4),
-      vec3.fromValues(1, 3, 4),
+      vec3.fromValues(1, 4, 3),
       vec3.fromValues(2, 3, 4),
     ];
 
@@ -341,6 +341,7 @@ class GameEngine {
 
     const material = new Material();
     material.emmissive = vec3.fromValues(1, 0, 0);
+    material.metallic = vec3.fromValues(0, 0, 0);
 
     const width = 20;
     const height = 20;

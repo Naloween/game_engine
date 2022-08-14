@@ -41,12 +41,16 @@ class Mesh {
       max_point[2] - min_point[2]
     );
 
+    const h = 0.001;
+
     for (let vertex of vertices) {
       this.vertices.push(
         vec3.fromValues(
-          (vertex[0] - min_point[0]) / (scale[0] > 0 ? scale[0] : 0),
-          (vertex[1] - min_point[1]) / (scale[1] > 0 ? scale[1] : 0),
-          (vertex[2] - min_point[2]) / (scale[2] > 0 ? scale[2] : 0)
+          (vertex[0] - min_point[0] + h) /
+            (scale[0] > 0 ? scale[0] + 2 * h : 1),
+          (vertex[1] - min_point[1] + h) /
+            (scale[1] > 0 ? scale[1] + 2 * h : 1),
+          (vertex[2] - min_point[2] + h) / (scale[2] > 0 ? scale[2] + 2 * h : 1)
         )
       );
     }
