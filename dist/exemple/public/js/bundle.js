@@ -8165,9 +8165,6 @@ exports.Camera = Camera;
 
 },{"gl-matrix":2}],13:[function(require,module,exports){
 "use strict";
-// import * as te from "./triangle_engine.js";
-// import * as mat4 from "./glMatrix/src/mat4.js";
-// import * as vec3 from "./glMatrix/src/vec3.js";
 exports.__esModule = true;
 exports.Player = exports.GameEngine = void 0;
 var gl_matrix_1 = require("gl-matrix");
@@ -8265,29 +8262,81 @@ var GameEngine = /** @class */ (function () {
         this.dt_fps = 0;
         this.previousTimeStamp = 0;
         this.fps = 0;
-        this.objects = [];
-        this.lights = [];
         this.player = player;
         this.view = view;
         //camera
-        var width = 1000;
-        var height = 600;
         var render_distance = 1000;
-        this.camera = new Camera_1.Camera(width, height, render_distance);
+        this.camera = new Camera_1.Camera(view.width, view.height, render_distance);
         //Graphic engine
         this.engine = new GraphicEngine_1.GraphicEngine(view.getContext("webgl2"));
         this.generate_world();
-        this.load_mode("Raytracing");
         // Events
         this.load_events();
-    }
-    GameEngine.prototype.load_mode = function (mode) {
-        this.engine.loadMode(mode);
-        var TransformMatrix = gl_matrix_1.mat4.create();
-        this.engine.setTransformVertices(TransformMatrix);
+        this.camera.position = gl_matrix_1.vec3.clone(this.player.position);
+        this.camera.phi = this.player.phi;
+        this.camera.teta = this.player.teta;
+        this.camera.update();
         this.engine.setCameraUniforms(this.camera);
-        this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1, 1, 1]);
         this.engine.render();
+    }
+    // load_mode(mode: "Rasterization" | "Raytracing") {
+    //   this.engine.loadMode(mode);
+    //   const TransformMatrix = mat4.create();
+    //   this.engine.setTransformVertices(TransformMatrix);
+    //   this.engine.setCameraUniforms(this.camera);
+    //   this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1, 1, 1]);
+    //   this.engine.render();
+    // }
+    GameEngine.prototype.nextFrame = function (timestamp) {
+        if (this.player.rendering) {
+            //time
+            var dt = (timestamp - this.previousTimeStamp) / 1000; // in secondes
+            this.previousTimeStamp = timestamp;
+            // Player & camera
+            //gravity
+            // this.player.vitesse[2] -= 10 * dt;
+            //update player position
+            this.player.move(dt);
+            // const h = this.landscape(this.player.position[0], this.player.position[1]);
+            // if (this.player.position[2] < h + 2){
+            //     this.player.position[2] = h + 2;
+            //     this.player.vitesse[2] = 0;
+            // }
+            //draw frame
+            this.camera.position = gl_matrix_1.vec3.clone(this.player.position);
+            this.camera.phi = this.player.phi;
+            this.camera.teta = this.player.teta;
+            this.camera.update();
+            this.engine.setCameraUniforms(this.camera);
+            this.engine.render();
+            //update infos
+            //fps
+            this.dt_fps += dt;
+            this.fps += 1;
+            if (this.dt_fps > 0.5) {
+                var fps = document.getElementById("fps");
+                fps.innerText = (1 / dt).toFixed(2) + "fps";
+                this.dt_fps = 0;
+                this.fps = 0;
+                //this.update_world();
+            }
+            //position infos
+            var element_position_x = document.getElementById("position_x");
+            var element_position_y = document.getElementById("position_y");
+            var element_position_z = document.getElementById("position_z");
+            element_position_x.innerText = "x: " + this.player.position[0].toFixed(2);
+            element_position_y.innerText = "y: " + this.player.position[1].toFixed(2);
+            element_position_z.innerText = "z: " + this.player.position[2].toFixed(2);
+            window.requestAnimationFrame(this.nextFrame.bind(this));
+        }
+        else {
+            this.previousTimeStamp = timestamp;
+            window.requestAnimationFrame(this.nextFrame.bind(this));
+        }
+    };
+    GameEngine.prototype.run = function () {
+        console.log("starting Game...");
+        window.requestAnimationFrame(this.nextFrame.bind(this));
     };
     GameEngine.prototype.load_events = function () {
         var _this = this;
@@ -8367,41 +8416,8 @@ var GameEngine = /** @class */ (function () {
             }
         }).bind(this), false);
     };
-    GameEngine.prototype.load_scene = function () {
-        var vertices = [];
-        var triangles = [];
-        var objects = [];
-        var materials = [];
-        var lights = [100, 100, 100, 0, 0, 0];
-        var worldObject = new GameObject_1.GameObject(gl_matrix_1.vec3.fromValues(0, 0, 0), gl_matrix_1.vec3.fromValues(1, 1, 1), new GameObject_1.Mesh([], []), new Material_1.Material());
-        for (var _i = 0, _a = this.objects; _i < _a.length; _i++) {
-            var object = _a[_i];
-            worldObject.addInnerObject(object);
-        }
-        var next_object_idndex = 0;
-        var objectsToAdd = [worldObject];
-        // Make so that the objects are in the right order, each inner objects are successive
-        var object_index = 0;
-        while (object_index < objectsToAdd.length) {
-            var object = objectsToAdd[object_index];
-            object.array_index = next_object_idndex;
-            next_object_idndex++;
-            for (var _b = 0, _c = object.innerObjects; _b < _c.length; _b++) {
-                var inner_object = _c[_b];
-                objectsToAdd.push(inner_object);
-            }
-            object_index++;
-        }
-        for (var _d = 0, objectsToAdd_1 = objectsToAdd; _d < objectsToAdd_1.length; _d++) {
-            var object = objectsToAdd_1[_d];
-            object.load(objects, vertices, triangles, materials);
-        }
-        // console.log(objects);
-        console.log(vertices);
-        this.engine.setTextures(vertices, triangles, objects, materials, lights);
-    };
     GameEngine.prototype.generate_world = function () {
-        this.objects = [];
+        var game_objects = [];
         var vertices = [
             gl_matrix_1.vec3.fromValues(0, 0, 0),
             gl_matrix_1.vec3.fromValues(1, 0, 0),
@@ -8418,11 +8434,12 @@ var GameEngine = /** @class */ (function () {
             gl_matrix_1.vec3.fromValues(2, 3, 4),
         ];
         var my_mesh = new GameObject_1.Mesh(vertices, triangles);
-        var material = new Material_1.Material(gl_matrix_1.vec3.fromValues(1, 0, 0));
+        var material = new Material_1.Material();
+        material.emmissive = gl_matrix_1.vec3.fromValues(1, 0, 0);
         var width = 20;
         var height = 20;
-        for (var k = 0; k < 2; k++) {
-            for (var k2 = 0; k2 < 10; k2++) {
+        for (var k = 0; k < 5; k++) {
+            for (var k2 = 0; k2 < 5; k2++) {
                 var my_object = new GameObject_1.GameObject(gl_matrix_1.vec3.fromValues((height + 1) * k, (width + 1) * k2, -8), gl_matrix_1.vec3.fromValues(height, width, 10), my_mesh, material);
                 for (var i = 0; i < 10; i++) {
                     for (var j = 0; j < 10; j++) {
@@ -8431,67 +8448,49 @@ var GameEngine = /** @class */ (function () {
                         my_object.addInnerObject(my_object2);
                     }
                 }
-                this.objects.push(my_object);
+                game_objects.push(my_object);
             }
         }
-        this.load_scene();
+        this.load_scene(game_objects);
     };
-    GameEngine.prototype.nextFrame = function (timestamp) {
-        if (this.player.rendering) {
-            //time
-            var dt = (timestamp - this.previousTimeStamp) / 1000; // in secondes
-            this.previousTimeStamp = timestamp;
-            // Player & camera
-            //gravity
-            // this.player.vitesse[2] -= 10 * dt;
-            //update player position
-            this.player.move(dt);
-            // const h = this.landscape(this.player.position[0], this.player.position[1]);
-            // if (this.player.position[2] < h + 2){
-            //     this.player.position[2] = h + 2;
-            //     this.player.vitesse[2] = 0;
-            // }
-            //draw frame
-            this.camera.position = gl_matrix_1.vec3.clone(this.player.position);
-            this.camera.phi = this.player.phi;
-            this.camera.teta = this.player.teta;
-            this.camera.update();
-            this.engine.setCameraUniforms(this.camera);
-            this.engine.render();
-            //update infos
-            //fps
-            this.dt_fps += dt;
-            this.fps += 1;
-            if (this.dt_fps > 0.5) {
-                var fps = document.getElementById("fps");
-                fps.innerText = (1 / dt).toFixed(2) + "fps";
-                this.dt_fps = 0;
-                this.fps = 0;
-                //this.update_world();
+    GameEngine.prototype.load_scene = function (game_objects) {
+        var vertices = [];
+        var triangles = [];
+        var objects = [];
+        var materials = [];
+        var lights = [100, 100, 100, 0, 0, 0];
+        var worldObject = new GameObject_1.GameObject(gl_matrix_1.vec3.fromValues(0, 0, 0), gl_matrix_1.vec3.fromValues(1, 1, 1), new GameObject_1.Mesh([], []), new Material_1.Material());
+        for (var _i = 0, game_objects_1 = game_objects; _i < game_objects_1.length; _i++) {
+            var object = game_objects_1[_i];
+            worldObject.addInnerObject(object);
+        }
+        var next_object_idndex = 0;
+        var objectsToAdd = [worldObject];
+        // Make so that the objects are in the right order, each inner objects are successive
+        var object_index = 0;
+        while (object_index < objectsToAdd.length) {
+            var object = objectsToAdd[object_index];
+            object.array_index = next_object_idndex;
+            next_object_idndex++;
+            for (var _a = 0, _b = object.innerObjects; _a < _b.length; _a++) {
+                var inner_object = _b[_a];
+                objectsToAdd.push(inner_object);
             }
-            //position infos
-            var element_position_x = document.getElementById("position_x");
-            var element_position_y = document.getElementById("position_y");
-            var element_position_z = document.getElementById("position_z");
-            element_position_x.innerText = "x: " + this.player.position[0].toFixed(2);
-            element_position_y.innerText = "y: " + this.player.position[1].toFixed(2);
-            element_position_z.innerText = "z: " + this.player.position[2].toFixed(2);
-            window.requestAnimationFrame(this.nextFrame.bind(this));
+            object_index++;
         }
-        else {
-            this.previousTimeStamp = timestamp;
-            window.requestAnimationFrame(this.nextFrame.bind(this));
+        for (var _c = 0, objectsToAdd_1 = objectsToAdd; _c < objectsToAdd_1.length; _c++) {
+            var object = objectsToAdd_1[_c];
+            object.load(objects, vertices, triangles, materials);
         }
-    };
-    GameEngine.prototype.run = function () {
-        console.log("starting Game...");
-        window.requestAnimationFrame(this.nextFrame.bind(this));
+        // console.log(objects);
+        // console.log(vertices);
+        this.engine.setTextures(vertices, triangles, objects, materials, lights);
     };
     return GameEngine;
 }());
 exports.GameEngine = GameEngine;
 
-},{"./Camera":12,"./GameObject":14,"./GraphicEngine":15,"./Material":16,"gl-matrix":2}],14:[function(require,module,exports){
+},{"./Camera":12,"./GameObject":14,"./GraphicEngine":15,"./Material":17,"gl-matrix":2}],14:[function(require,module,exports){
 "use strict";
 exports.__esModule = true;
 exports.Mesh = exports.GameObject = void 0;
@@ -8529,8 +8528,6 @@ var Mesh = /** @class */ (function () {
             var vertex = vertices_2[_a];
             this.vertices.push(gl_matrix_1.vec3.fromValues((vertex[0] - min_point[0]) / (scale[0] > 0 ? scale[0] : 0), (vertex[1] - min_point[1]) / (scale[1] > 0 ? scale[1] : 0), (vertex[2] - min_point[2]) / (scale[2] > 0 ? scale[2] : 0)));
         }
-        console.log(min_point);
-        console.log(max_point);
     }
     Mesh.prototype.load = function (vertices, triangles) {
         if (this.triangle_index < 0) {
@@ -8610,52 +8607,156 @@ exports.GameObject = GameObject;
 "use strict";
 exports.__esModule = true;
 exports.GraphicEngine = void 0;
-var Shaders_1 = require("./Shaders");
+var Raytracing_1 = require("./Raytracing");
 var GraphicEngine = /** @class */ (function () {
     function GraphicEngine(gl) {
-        this.nb_triangles_indexes = 0;
         this.gl = gl;
-        this.gl.enable(this.gl.DEPTH_TEST); // Enable depth testing
-        this.gl.depthFunc(this.gl.LEQUAL); // Near things obscure far things
-        // buffers: load them independently of current mode
-        this.loadBuffers();
-        this.loadTextures();
-        this.loadMode("Raytracing");
+        this.mode = new Raytracing_1.Raytracing(gl);
+        this.mode.load();
     }
     GraphicEngine.prototype.render = function () {
+        this.mode.render();
+    };
+    GraphicEngine.prototype.setTextures = function (vertices, triangles, objects, materials, light_sources) {
+        this.mode.setTextures(vertices, triangles, objects, materials, light_sources);
+    };
+    GraphicEngine.prototype.setCameraUniforms = function (camera) {
+        this.mode.setCameraUniforms(camera);
+    };
+    return GraphicEngine;
+}());
+exports.GraphicEngine = GraphicEngine;
+
+},{"./Raytracing":18}],16:[function(require,module,exports){
+"use strict";
+exports.__esModule = true;
+exports.GraphicMode = void 0;
+var GraphicMode = /** @class */ (function () {
+    function GraphicMode(gl) {
+        this.gl = gl;
+    }
+    GraphicMode.prototype.load = function () { };
+    GraphicMode.prototype.render = function () { };
+    GraphicMode.prototype.setCameraUniforms = function (camera) { };
+    GraphicMode.prototype.setTextures = function (vertices, triangles, objects, materials, light_sources) { };
+    GraphicMode.prototype.loadShader = function (type, source) {
+        // Crée un shader du type fourni, charge le source et le compile.
+        var shader = this.gl.createShader(type);
+        // Envoyer le source à l'objet shader
+        this.gl.shaderSource(shader, source);
+        // Compiler le programme shader
+        this.gl.compileShader(shader);
+        // Vérifier s'il a été compilé avec succès
+        if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+            alert("An error occurred compiling the shaders: " +
+                this.gl.getShaderInfoLog(shader));
+            this.gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    };
+    return GraphicMode;
+}());
+exports.GraphicMode = GraphicMode;
+
+},{}],17:[function(require,module,exports){
+"use strict";
+exports.__esModule = true;
+exports.Material = void 0;
+var Material = /** @class */ (function () {
+    function Material(albedo, metallic, roughness, transparency, ior, emmissive) {
+        if (albedo === void 0) { albedo = [1, 1, 1]; }
+        if (metallic === void 0) { metallic = [0, 0, 0]; }
+        if (roughness === void 0) { roughness = [0, 0, 0]; }
+        if (transparency === void 0) { transparency = [0, 0, 0]; }
+        if (ior === void 0) { ior = [1, 1, 1]; }
+        if (emmissive === void 0) { emmissive = [0, 0, 0]; }
+        this.array_index = -1;
+        this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
+        this.metallic = metallic; // entre 0 et 1
+        this.roughness = roughness;
+        this.transparency = transparency;
+        this.ior = ior; //n1*sin(i) = n2*sin(r)
+        this.emmissive = emmissive;
+        this.id = -1;
+    }
+    Material.prototype.load = function (materials) {
+        if (this.array_index < 0) {
+            this.array_index = materials.length / 3;
+        }
+        materials.push(this.albedo[0]);
+        materials.push(this.albedo[1]);
+        materials.push(this.albedo[2]);
+        materials.push(this.transparency[0]);
+        materials.push(this.transparency[1]);
+        materials.push(this.transparency[2]);
+        materials.push(this.metallic[0]);
+        materials.push(this.metallic[1]);
+        materials.push(this.metallic[2]);
+        materials.push(this.roughness[0]);
+        materials.push(this.roughness[1]);
+        materials.push(this.roughness[2]);
+        materials.push(this.ior[0]);
+        materials.push(this.ior[1]);
+        materials.push(this.ior[2]);
+        materials.push(this.emmissive[0]);
+        materials.push(this.emmissive[1]);
+        materials.push(this.emmissive[2]);
+    };
+    Material.next_id = 0;
+    return Material;
+}());
+exports.Material = Material;
+
+},{}],18:[function(require,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+exports.__esModule = true;
+exports.Raytracing = void 0;
+var GraphicMode_1 = require("./GraphicMode");
+var RaytracingShaders_1 = require("./shaders/RaytracingShaders");
+var Raytracing = /** @class */ (function (_super) {
+    __extends(Raytracing, _super);
+    function Raytracing(gl) {
+        return _super.call(this, gl) || this;
+    }
+    Raytracing.prototype.render = function () {
         this.gl.uniform1f(this.timeLocation, Date.now() % (2 * Math.PI)); // sending current time to GPU
         this.gl.clearColor(0.0, 0.0, 0.0, 0.0); // Clear to fully transparent
         this.gl.clearDepth(1.0); // Clear everything
         // Clear the canvas before we start drawing on it.
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
         // Tell WebGL which indices to use to index the vertices
-        if (this.mode == "Rasterization") {
-            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.trianglesBuffer);
-            this.gl.drawElements(this.gl.TRIANGLES, this.nb_triangles_indexes, this.gl.UNSIGNED_INT, 0);
-        }
-        else if (this.mode == "Raytracing") {
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
-            this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
-        }
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
+        this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     };
-    GraphicEngine.prototype.loadMode = function (mode) {
-        this.mode = mode;
+    Raytracing.prototype.load = function () {
         this.shaderProgram = this.initShaderProgram();
         this.gl.useProgram(this.shaderProgram);
         // locations: link buffers to shader program
+        this.loadBuffers();
+        this.loadTextures();
         this.loadLocations();
     };
-    GraphicEngine.prototype.initShaderProgram = function () {
+    Raytracing.prototype.initShaderProgram = function () {
         var vertexShader = null;
         var fragmentShader = null;
-        if (this.mode == "Rasterization") {
-            vertexShader = this.loadShader(this.gl.VERTEX_SHADER, Shaders_1.TriangleVertexShaderSource);
-            fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, Shaders_1.TriangleFragmentShaderSource);
-        }
-        else if (this.mode == "Raytracing") {
-            vertexShader = this.loadShader(this.gl.VERTEX_SHADER, Shaders_1.RayTracingVertexShaderSource);
-            fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, Shaders_1.RayTracingFragmentShaderSource);
-        }
+        vertexShader = this.loadShader(this.gl.VERTEX_SHADER, RaytracingShaders_1.raytracing_vertex_shader_src);
+        fragmentShader = this.loadShader(this.gl.FRAGMENT_SHADER, RaytracingShaders_1.raytracing_frag_shader_src);
         // Créer le programme shader
         if (vertexShader == null || fragmentShader == null) {
             console.log("error: vertex shader or fragment shader is null");
@@ -8673,35 +8774,14 @@ var GraphicEngine = /** @class */ (function () {
         }
         return shaderProgram;
     };
-    GraphicEngine.prototype.loadShader = function (type, source) {
-        // Crée un shader du type fourni, charge le source et le compile.
-        var shader = this.gl.createShader(type);
-        // Envoyer le source à l'objet shader
-        this.gl.shaderSource(shader, source);
-        // Compiler le programme shader
-        this.gl.compileShader(shader);
-        // Vérifier s'il a été compilé avec succès
-        if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
-            alert("An error occurred compiling the shaders: " +
-                this.gl.getShaderInfoLog(shader));
-            this.gl.deleteShader(shader);
-            return null;
-        }
-        return shader;
-    };
-    GraphicEngine.prototype.loadBuffers = function () {
+    Raytracing.prototype.loadBuffers = function () {
         this.trianglesCanvasBuffer = this.gl.createBuffer();
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array([
             -1, -1, 0, -1, 1, 0, 1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0,
         ]), this.gl.STATIC_DRAW);
-        this.trianglesBuffer = this.gl.createBuffer();
-        this.positionBuffer = this.gl.createBuffer();
-        this.normalBuffer = this.gl.createBuffer();
-        this.diffuseColorBuffer = this.gl.createBuffer();
-        this.transparencyBuffer = this.gl.createBuffer();
     };
-    GraphicEngine.prototype.loadTextures = function () {
+    Raytracing.prototype.loadTextures = function () {
         this.verticesTexture = this.gl.createTexture();
         this.trianglesTexture = this.gl.createTexture();
         this.objectsTexture = this.gl.createTexture();
@@ -8738,81 +8818,40 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
     };
-    GraphicEngine.prototype.loadLocations = function () {
-        if (this.mode == "Rasterization") {
-            // uniforms locations
-            this.projectionMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, "uProjectionMatrix");
-            this.TransformMatrixLocation = this.gl.getUniformLocation(this.shaderProgram, "uTransformMatrix");
-            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraPosition");
-            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentTransparency");
-            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentDiffuseColor");
-            // attributes locations
-            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexPosition");
-            this.vertexNormalLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexNormal");
-            this.vertexDiffuseColorLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexDiffuseColor");
-            this.vertexTransparencyLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexTransparency");
-            // set attribute location to corresponding buffer with iteration parameters
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
-            this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
-            this.gl.enableVertexAttribArray(this.vertexPositionLocation);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
-            this.gl.vertexAttribPointer(this.vertexNormalLocation, 3, this.gl.FLOAT, false, 0, 0);
-            this.gl.enableVertexAttribArray(this.vertexNormalLocation);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.diffuseColorBuffer);
-            this.gl.vertexAttribPointer(this.vertexDiffuseColorLocation, 3, this.gl.FLOAT, false, 0, 0);
-            this.gl.enableVertexAttribArray(this.vertexDiffuseColorLocation);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.transparencyBuffer);
-            this.gl.vertexAttribPointer(this.vertexTransparencyLocation, 3, this.gl.FLOAT, false, 0, 0);
-            this.gl.enableVertexAttribArray(this.vertexTransparencyLocation);
-        }
-        else if (this.mode == "Raytracing") {
-            // uniforms locations
-            this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraPosition");
-            this.cameraDirectionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirection");
-            this.cameraDirectionXLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirectionX");
-            this.cameraDirectionYLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirectionY");
-            this.cameraFovLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraFov");
-            this.cameraWidthLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraWidth");
-            this.cameraHeightLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraHeight");
-            this.currentTransparencyLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentTransparency");
-            this.currentDiffuseColorLocation = this.gl.getUniformLocation(this.shaderProgram, "uCurrentDiffuseColor");
-            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, "uMaterials");
-            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, "uLightSources");
-            this.timeLocation = this.gl.getUniformLocation(this.shaderProgram, "uTime");
-            //textures
-            this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, "uVertices");
-            this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, "uTriangles");
-            this.objectsLocation = this.gl.getUniformLocation(this.shaderProgram, "uObjects");
-            this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, "uMaterials");
-            this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, "uLightSources");
-            this.gl.uniform1i(this.verticesLocation, 0); // texture unit 0
-            this.gl.uniform1i(this.trianglesLocation, 1); // texture unit 1
-            this.gl.uniform1i(this.objectsLocation, 2); // texture unit 2
-            this.gl.uniform1i(this.materialsLocation, 3); // texture unit 3
-            this.gl.uniform1i(this.lightSourcesLocation, 4); // texture unit 4
-            // attributes locations
-            this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexPosition");
-            // set attribute location to corresponding buffer with iteration parameters
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
-            this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
-            this.gl.enableVertexAttribArray(this.vertexPositionLocation);
-        }
+    Raytracing.prototype.loadLocations = function () {
+        // uniforms locations
+        this.cameraPositionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraPosition");
+        this.cameraDirectionLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirection");
+        this.cameraDirectionXLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirectionX");
+        this.cameraDirectionYLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraDirectionY");
+        this.cameraFovLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraFov");
+        this.cameraWidthLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraWidth");
+        this.cameraHeightLocation = this.gl.getUniformLocation(this.shaderProgram, "uCameraHeight");
+        this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, "uMaterials");
+        this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, "uLightSources");
+        this.timeLocation = this.gl.getUniformLocation(this.shaderProgram, "uTime");
+        //textures
+        this.verticesLocation = this.gl.getUniformLocation(this.shaderProgram, "uVertices");
+        this.trianglesLocation = this.gl.getUniformLocation(this.shaderProgram, "uTriangles");
+        this.objectsLocation = this.gl.getUniformLocation(this.shaderProgram, "uObjects");
+        this.materialsLocation = this.gl.getUniformLocation(this.shaderProgram, "uMaterials");
+        this.lightSourcesLocation = this.gl.getUniformLocation(this.shaderProgram, "uLightSources");
+        this.gl.uniform1i(this.verticesLocation, 0); // texture unit 0
+        this.gl.uniform1i(this.trianglesLocation, 1); // texture unit 1
+        this.gl.uniform1i(this.objectsLocation, 2); // texture unit 2
+        this.gl.uniform1i(this.materialsLocation, 3); // texture unit 3
+        this.gl.uniform1i(this.lightSourcesLocation, 4); // texture unit 4
+        // attributes locations
+        this.vertexPositionLocation = this.gl.getAttribLocation(this.shaderProgram, "aVertexPosition");
+        // set attribute location to corresponding buffer with iteration parameters
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.trianglesCanvasBuffer);
+        this.gl.vertexAttribPointer(this.vertexPositionLocation, 3, this.gl.FLOAT, false, 0, 0);
+        this.gl.enableVertexAttribArray(this.vertexPositionLocation);
     };
-    GraphicEngine.prototype.setBuffers = function (positions, normals, diffuseColor, transparency, indexes) {
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(positions), this.gl.STATIC_DRAW);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(normals), this.gl.STATIC_DRAW);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.diffuseColorBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(diffuseColor), this.gl.STATIC_DRAW);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.transparencyBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(transparency), this.gl.STATIC_DRAW);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.trianglesBuffer);
-        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indexes), this.gl.STATIC_DRAW);
-    };
-    GraphicEngine.prototype.setTextures = function (vertices, triangles, objects, materials, light_sources) {
+    Raytracing.prototype.setTextures = function (vertices, triangles, objects, materials, light_sources) {
         console.log("Max :" + this.gl.MAX_TEXTURE_SIZE * 4);
-        console.log("Current : " + vertices.length / 3);
+        console.log("Current : " +
+            Math.max(vertices.length, objects.length, triangles.length) / 3);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, vertices.length / 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(vertices));
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
@@ -8824,120 +8863,24 @@ var GraphicEngine = /** @class */ (function () {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.lightSourcesTexture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGB32F, light_sources.length / 3, 1, 0, this.gl.RGB, this.gl.FLOAT, new Float32Array(light_sources));
     };
-    GraphicEngine.prototype.updateVertices = function (offset, positions, normals, diffuseColor, transparency) {
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset * 4, new Float32Array(positions));
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset * 4, new Float32Array(normals));
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.diffuseColorBuffer);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset * 4, new Float32Array(diffuseColor));
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.transparencyBuffer);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset * 4, new Float32Array(transparency));
-    };
-    GraphicEngine.prototype.setCameraUniforms = function (camera) {
-        // Set the shader uniform projection matrix
-        if (this.mode == "Rasterization") {
-            this.gl.uniformMatrix4fv(this.projectionMatrixLocation, false, camera.projectionMatrix);
-        }
-        else if (this.mode == "Raytracing") {
-            // Set the shader uniform camera direction
-            var _a = camera.getRepere(), direction = _a[0], ux = _a[1], uy = _a[2];
-            this.gl.uniform3f(this.cameraDirectionLocation, direction[0], direction[1], direction[2]);
-            this.gl.uniform3f(this.cameraDirectionXLocation, ux[0], ux[1], ux[2]);
-            this.gl.uniform3f(this.cameraDirectionYLocation, uy[0], uy[1], uy[2]);
-            this.gl.uniform1f(this.cameraFovLocation, camera.fov);
-            this.gl.uniform1f(this.cameraWidthLocation, camera.width);
-            this.gl.uniform1f(this.cameraHeightLocation, camera.height);
-        }
+    Raytracing.prototype.setCameraUniforms = function (camera) {
+        // Set the shader uniform camera direction
+        var _a = camera.getRepere(), direction = _a[0], ux = _a[1], uy = _a[2];
+        this.gl.uniform3f(this.cameraDirectionLocation, direction[0], direction[1], direction[2]);
+        this.gl.uniform3f(this.cameraDirectionXLocation, ux[0], ux[1], ux[2]);
+        this.gl.uniform3f(this.cameraDirectionYLocation, uy[0], uy[1], uy[2]);
+        this.gl.uniform1f(this.cameraFovLocation, camera.fov);
+        this.gl.uniform1f(this.cameraWidthLocation, camera.width);
+        this.gl.uniform1f(this.cameraHeightLocation, camera.height);
         // Set the shader uniform camera position
         this.gl.uniform3f(this.cameraPositionLocation, -camera.position[0], -camera.position[1], -camera.position[2]);
     };
-    GraphicEngine.prototype.setCurrentMaterialUniforms = function (transparency, diffuseColor) {
-        this.gl.uniform3f(this.currentTransparencyLocation, transparency[0], transparency[1], transparency[2]);
-        this.gl.uniform3f(this.currentDiffuseColorLocation, diffuseColor[0], diffuseColor[1], diffuseColor[2]);
-    };
-    GraphicEngine.prototype.setTransformVertices = function (TransformMatrix) {
-        // Set the shader uniforms
-        if (this.mode == "Rasterization") {
-            this.gl.uniformMatrix4fv(this.TransformMatrixLocation, false, TransformMatrix);
-        }
-    };
-    return GraphicEngine;
-}());
-exports.GraphicEngine = GraphicEngine;
+    return Raytracing;
+}(GraphicMode_1.GraphicMode));
+exports.Raytracing = Raytracing;
 
-},{"./Shaders":17}],16:[function(require,module,exports){
+},{"./GraphicMode":16,"./shaders/RaytracingShaders":20}],19:[function(require,module,exports){
 "use strict";
-exports.__esModule = true;
-exports.Material = void 0;
-var Material = /** @class */ (function () {
-    function Material(albedo, metallic, roughness, transparency, ior, emmissive) {
-        if (albedo === void 0) { albedo = [1, 1, 1]; }
-        if (metallic === void 0) { metallic = [0, 0, 0]; }
-        if (roughness === void 0) { roughness = [0, 0, 0]; }
-        if (transparency === void 0) { transparency = [0, 0, 0]; }
-        if (ior === void 0) { ior = [1, 1, 1]; }
-        if (emmissive === void 0) { emmissive = [0, 0, 0]; }
-        this.array_index = -1;
-        this.albedo = albedo; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
-        this.metallic = metallic; // entre 0 et 1
-        this.roughness = roughness;
-        this.transparency = transparency;
-        this.ior = ior; //n1*sin(i) = n2*sin(r)
-        this.emmissive = emmissive;
-        this.id = -1;
-    }
-    Material.prototype.load = function (materials) {
-        if (this.array_index < 0) {
-            this.array_index = materials.length / 3;
-        }
-        materials.push(this.albedo[0]);
-        materials.push(this.albedo[1]);
-        materials.push(this.albedo[2]);
-        materials.push(this.transparency[0]);
-        materials.push(this.transparency[1]);
-        materials.push(this.transparency[2]);
-        materials.push(this.metallic[0]);
-        materials.push(this.metallic[1]);
-        materials.push(this.metallic[2]);
-        materials.push(this.ior[0]);
-        materials.push(this.ior[1]);
-        materials.push(this.ior[2]);
-        materials.push(this.emmissive[0]);
-        materials.push(this.emmissive[1]);
-        materials.push(this.emmissive[2]);
-    };
-    Material.next_id = 0;
-    return Material;
-}());
-exports.Material = Material;
-
-},{}],17:[function(require,module,exports){
-"use strict";
-// Shader Programs
-exports.__esModule = true;
-exports.RayTracingVertexShaderSource = exports.RayTracingFragmentShaderSource = exports.TriangleVertexShaderSource = exports.TriangleFragmentShaderSource = void 0;
-var TriangleVertexShaderSource = "\n    precision highp float;\n\n    attribute vec4 aVertexPosition;\n    attribute vec3 aVertexNormal;\n    attribute vec3 aVertexDiffuseColor;\n    attribute vec3 aVertexTransparency;\n\n    uniform mat4 uTransformMatrix;\n    uniform mat4 uProjectionMatrix;\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCurrentTransparency;\n    uniform vec3 uCurrentDiffuseColor;\n\n    varying vec3 vDiffuseLighting;\n\n    void main() {\n        gl_Position = uProjectionMatrix * uTransformMatrix * aVertexPosition;\n\n        // Apply lighting effect\n\n        vec3 ambientLight = vec3(0.3, 0.3, 0.3);\n        vec3 directionalLightColor = vec3(1, 1, 1);\n        vec3 directionalVector = normalize(vec3(1., 1., 1.));\n\n        float distance = length(aVertexPosition.xyz - uCameraPosition);\n  \n        float directional = max(dot(aVertexNormal.xyz, directionalVector), 0.0);\n\n        vec3 current_material_percentage = 1. - vec3(pow(uCurrentTransparency.r, distance), pow(uCurrentTransparency.g, distance), pow(uCurrentTransparency.b, distance));\n        vec3 vertex_material_percentage = 1. - vec3(pow(aVertexTransparency.r, distance), pow(aVertexTransparency.g, distance), pow(aVertexTransparency.b, distance));\n\n        vDiffuseLighting = current_material_percentage * uCurrentDiffuseColor + (1. - current_material_percentage) * directional * aVertexDiffuseColor;\n    }\n";
-exports.TriangleVertexShaderSource = TriangleVertexShaderSource;
-var TriangleFragmentShaderSource = "\n    precision highp float;\n\n    varying highp vec3 vDiffuseLighting;\n\n    void main() {\n        \n        gl_FragColor = vec4(vDiffuseLighting, 1.);\n    }\n";
-exports.TriangleFragmentShaderSource = TriangleFragmentShaderSource;
-var RayTracingVertexShaderSource = "#version 300 es\n    precision highp float;\n\n    in vec4 aVertexPosition;\n\n    void main() {\n        gl_Position = aVertexPosition;\n    }\n";
-exports.RayTracingVertexShaderSource = RayTracingVertexShaderSource;
-// TODO set time uniform and implement random function that is different for each pixel and each time
-// TODO: Bricolage (inversion direction = - direction & v0, v1, v2 = -v0, -v1, -v2)
-var RayTracingFragmentShaderSource = "#version 300 es\n\n    // Precisions\n\n    precision highp float;\n    precision mediump int;\n\n    // Structures\n\n    struct Object\n    {\n        float inner_objects_index;\n        float nb_inner_objects;\n        float parent_object_index;\n\n        float triangle_index;\n        float nb_triangles;\n        float material_index;\n\n        vec3 position;\n\n        vec3 dimensions;\n    };\n\n    struct Material\n    {\n        vec3 albedo; // the color of the material (for diffusion)\n        vec3 transparency; // the transparency of the material percentage that get out for 1m\n        vec3 metallic; //reflection irror like\n        vec3 ior; // index of refraction ou IOR\n        vec3 emmissive;\n    };\n\n    struct LightSource\n    {\n        vec3 lightAmount;\n        vec3 position;\n    };\n\n    // Uniforms\n\n    uniform sampler2D uVertices; // position\n    uniform mediump usampler2D uTriangles; // vertices_index\n    uniform sampler2D uObjects; // start_triangle_index, nb_triangles, material_index [, position, dimensions, transform_matrix (rotate, translate, scale)]\n    uniform sampler2D uMaterials; // Albedo, Transparency, Metallic, Ior, Emmissive\n    uniform sampler2D uLightSources; // LightAmount, Position\n\n    uniform vec3 uCameraPosition;\n    uniform vec3 uCameraDirection;\n    uniform vec3 uCameraDirectionY;\n    uniform vec3 uCameraDirectionX;\n    uniform float uCameraFov;\n    uniform float uCameraWidth;\n    uniform float uCameraHeight;\n\n    uniform float uTime;\n    " +
-    "\n\n    // Functions\n\n    float rand(float seed);\n    vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes);\n    float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2);\n    vec2 intersectBox(vec3 position, vec3 dimensions);\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions);\n    vec3 getPixelColor();\n\n    float rand(float x){\n        return 1.;\n        return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);\n    }\n\n    vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes){\n\n        float t = -1. ;\n        vec3 normale = vec3(0.,0.,0.);\n        float triangle_index = object.triangle_index;\n\n        while (triangle_index < object.triangle_index + object.nb_triangles){\n            \n            // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n            vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );\n            uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n\n            float vertices_width = float(vertices_sizes.x);\n\n            vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;\n            vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n            vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n\n            v0 = object.position + v0 * object.dimensions;\n            v1 = object.position + v1 * object.dimensions;\n            v2 = object.position + v2 * object.dimensions;\n\n            float t_triangle = intersectTriangle(cast_point, direction, v0, v1, v2);\n\n            vec3 hitPointTriangle = cast_point + t_triangle * direction;\n            bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);\n            if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){\n                t = t_triangle;\n\n                // Get normale\n                float vertices_width = float(vertices_sizes.x);\n                vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;\n                vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n                vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n                \n                normale = cross(v1 - v0, v2 - v0);\n                normale = normalize(normale);\n                // float area = length(normale); \n                // normale /= area;\n            }\n\n            triangle_index++;\n        }\n\n        return vec4(t, normale);\n    }\n\n    float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2){\n\n        // Compute plane normale\n        \n        vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n        float area = length(normale); \n        normale /= area;\n\n        // check if ray parallel to triangle\n        // float NdotRayDirection = dot(normale, direction); \n        // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n        //     return false;  //they are parallel so they don't intersect ! \n\n        // compute t\n        float t = dot(v0 - cast_point, normale) / dot(direction, normale);\n        vec3 M = cast_point + t * direction;\n\n        // inside / outside test V1\n        vec3 C;  //vector perpendicular to triangle's plane\n     \n        // edge 0\n        C = cross(M - v0, v1 - v0); \n        if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n     \n        // edge 1\n        C = cross(M - v0, v2 - v0); \n        if (dot(C, normale) < 0.) return -1.;\n     \n        // edge 2\n        C = cross(M - v1, v2 - v1); \n        if (dot(C, normale) > 0.) return -1.; \n\n        return t;\n    }\n\n    bool inBox(vec3 position, vec3 box_position, vec3 dimensions){\n        return position.x < box_position.x && position.x > box_position.x - dimensions.x\n        && position.y < box_position.y && position.y > box_position.y - dimensions.y\n        && position.z < box_position.z && position.z > box_position.z - dimensions.z;\n    }\n\n    vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){\n\n        float min_t = 10000000.0;\n        float max_t = -10000000.0;\n\n        float t0 = (position.x - cast_point.x) / direction.x;\n        vec3 M0 = cast_point + t0 * direction;\n        float t1 = (position.x - dimensions.x - cast_point.x) / direction.x;\n        vec3 M1 = cast_point + t1 * direction;\n        float t2 = (position.y - cast_point.y) / direction.y;\n        vec3 M2 = cast_point + t2 * direction;\n        float t3 = (position.y - dimensions.y - cast_point.y) / direction.y;\n        vec3 M3 = cast_point + t3 * direction;\n        float t4 = (position.z - cast_point.z) / direction.z;\n        vec3 M4 = cast_point + t4 * direction;\n        float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;\n        vec3 M5 = cast_point + t5 * direction;\n\n        if (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z){\n            if (t0 < min_t){\n                min_t = t0;\n            }\n            if (t0 > max_t){\n                max_t = t0;\n            }\n        }\n        if (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z){\n            if (t1 < min_t){\n                min_t = t1;\n            }\n            if (t1 > max_t){\n                max_t = t1;\n            }\n        }\n        if (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z){\n            if (t2 < min_t){\n                min_t = t2;\n            }\n            if (t2 > max_t){\n                max_t = t2;\n            }\n        }\n        if (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z){\n            if (t3 < min_t){\n                min_t = t3;\n            }\n            if (t3 > max_t){\n                max_t = t3;\n            }\n        }\n        if (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x){\n            if (t4 < min_t){\n                min_t = t4;\n            }\n            if (t4 > max_t){\n                max_t = t4;\n            }\n        }\n        if (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x){\n            if (t5 < min_t){\n                min_t = t5;\n            }\n            if (t5 > max_t){\n                max_t = t5;\n            }\n        }\n\n        return vec2(min_t, max_t);\n    }\n    " +
-    "\n\n    vec3 getPixelColor(){\n        // texture sizes\n        ivec2 vertices_sizes = textureSize(uVertices, 0);\n        ivec2 triangles_sizes = textureSize(uTriangles, 0);\n        ivec2 objects_sizes = textureSize(uObjects, 0);\n        ivec2 materials_sizes = textureSize(uMaterials, 0);\n        ivec2 light_sources_sizes = textureSize(uLightSources, 0);\n\n        // Direction of the ray\n\n        // random number to offset ray\n        float rand_num =  rand(-1.);\n\n        float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;\n        float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;\n\n        vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n        direction = normalize(direction);\n\n        // skybox_color defined by the direction\n        vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n\n\n        int step = 0;\n        int max_step = 20;\n        float distance = 0.;\n        vec3 cast_point = uCameraPosition;\n\n        float ray_percentage = 1.;\n        vec3 inLight = vec3(0.,0.,0.);\n        float diaphragme = 0.5;\n\n        float parent_object_index = 0.;\n        Material current_material;\n\n        vec4 parent_object_inner_objects = texture(uObjects, vec2( (parent_object_index + 0.5) / float(objects_sizes.x) ));\n        vec4 parent_object_indices = texture(uObjects, vec2( (parent_object_index + 1. + 0.5) / float(objects_sizes.x) ));\n        vec4 parent_object_position = texture(uObjects, vec2( (parent_object_index + 2. + 0.5) / float(objects_sizes.x) ));\n        vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));\n        Object parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    \n\n        // All ray steps\n        while (step < max_step && ray_percentage > 0.001){\n\n            float nb_inner_objects =  parent_object.nb_inner_objects;\n            float inner_object_index = parent_object.inner_objects_index;\n\n            // loop on inner objects\n    \n            float next_t = -1.;\n            float t_object = -1.;\n            \n            // Find closest inner_object\n\n            Object closest_object;\n            bool hitting_object = false;\n\n            while (inner_object_index < parent_object.inner_objects_index + 4.*nb_inner_objects){\n" +
-    "\n                vec4 object_inner_objects = texture(uObjects, vec2( (inner_object_index + 0.5) / float(objects_sizes.x) ));\n                vec4 object_indices = texture(uObjects, vec2( (inner_object_index + 1. + 0.5) / float(objects_sizes.x) ));\n                vec4 object_position = texture(uObjects, vec2( (inner_object_index + 2. + 0.5) / float(objects_sizes.x) ));\n                vec4 object_dimensions = texture(uObjects, vec2( (inner_object_index + 3. + 0.5) / float(objects_sizes.x) ));\n                Object inner_object = Object(object_inner_objects.x, object_inner_objects.y, object_inner_objects.z, object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);\n    \n                vec2 min_max_t = intersectBox(cast_point, direction, inner_object.position, inner_object.dimensions);\n                float min_t = min_max_t.x;\n                float max_t = min_max_t.y;\n    \n                if (min_t < max_t && max_t>0.){ // Si le rayon intersect la box\n                    float t = max(min_t, 0.); // Si min_t < 0. on est dans l'objet\n\n                    if (t_object<0. || t < t_object){\n                        hitting_object = true;\n                        closest_object = inner_object;\n                        t_object = t;\n                        next_t = max_t - t_object + 0.01;\n                    }\n                }\n    \n                inner_object_index += 4.;\n" +
-    "\n            }\n    \n            // Go in closest_object\n            if (hitting_object){\n" +
-    "\n\n\n                // change step\n                cast_point = cast_point + t_object * direction;\n                distance += t_object;\n\n                if (closest_object.nb_inner_objects > 0.){\n\n                    // change parent_object\n\n                    parent_object = closest_object;\n\n                } else {\n\n                    // Material\n        \n                    vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));\n                    vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));\n                    vec4 metallic = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) ));\n                    vec4 ior = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) ));\n                    vec4 emissive = texture(uMaterials, vec2( (closest_object.material_index + 4. + 0.5) / float(materials_sizes.x) ));\n                    \n                    Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, ior.xyz, emissive.xyz);\n        \n                    // intersect Mesh\n\n                    vec4 res = intersectMesh(closest_object, cast_point, direction, vertices_sizes, triangles_sizes);\n\n                    float t_mesh = res.r;\n                    vec3 normale = res.gba;\n                    \n                    float box_transparency = 0.9;\n\n                    if (t_mesh > 0.){\n\n                        current_material = material;\n\n                        // box color (transparent)\n                        float light_throug = pow(box_transparency, t_mesh);\n                        inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n\n                        // increment cast point\n                        ray_percentage *= light_throug;\n                        cast_point = cast_point + t_mesh * direction;\n                        distance += t_mesh;\n                        \n                        // Reflection\n                        float reflection_coef = 0.5;\n                        if (rand(float(step)) < reflection_coef){\n                            direction -= 2. * dot(direction, normale) * normale;\n                            direction = normalize(direction);\n                            cast_point = cast_point + 0.01 * direction;\n                        } else {\n                            // triangle color\n                            float l = 1. - distance/300.;\n                            inLight += ray_percentage*vec3(0., l/2., l);\n                            break;\n                        }\n\n                    } else {\n                        float light_throug = pow(box_transparency, next_t);\n                        inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n                        ray_percentage *= light_throug;\n\n                        cast_point = cast_point + next_t * direction;\n                        distance += next_t;\n                    }\n                }\n" +
-    "\n            } else {\n" +
-    "\n                if (parent_object.parent_object_index < 0.){ // we hit the skybox\n                    inLight += ray_percentage*sky_box_color;\n                    // inLight = vec3(ray_percentage);\n                    break;\n                } else { // we go to parent box\n\n                    return vec3(1.,0.,0.);\n\n                    // Move cast point\n\n\n                    vec2 min_max_t = intersectBox(cast_point, direction, parent_object.position, parent_object.dimensions);\n                    float min_t = min_max_t.x;\n                    float max_t = min_max_t.y;\n\n                    float parent_next_t = max_t + 0.01;\n\n                    cast_point = cast_point + parent_next_t * direction;\n                    distance += parent_next_t;\n\n                    // Change parent_object\n                    vec4 parent_object_inner_objects = texture(uObjects, vec2( (parent_object.parent_object_index + 0.5) / float(objects_sizes.x) ));\n                    vec4 parent_object_indices = texture(uObjects, vec2( (parent_object.parent_object_index + 1. + 0.5) / float(objects_sizes.x) ));\n                    vec4 parent_object_position = texture(uObjects, vec2( (parent_object.parent_object_index + 2. + 0.5) / float(objects_sizes.x) ));\n                    vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object.parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));\n                    parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    \n                }\n            }\n\n            step++;\n        }\n\n        // return vec3(float(step)/float(max_step));\n        // return vec3(distance/300.);\n        return diaphragme * inLight;\n    }\n\n\n\n    out vec4 fragColor;\n\n    void main() {\n        vec3 color = getPixelColor();\n        fragColor = vec4(color ,1.);\n    }\n";
-exports.RayTracingFragmentShaderSource = RayTracingFragmentShaderSource;
-
-},{}],18:[function(require,module,exports){
-"use strict";
-var _a;
 exports.__esModule = true;
 var GameEngine_1 = require("./GameEngine");
 // Materials
@@ -8958,42 +8901,60 @@ var GameEngine_1 = require("./GameEngine");
 // };
 // Main
 var player = new GameEngine_1.Player([0, 0, 0], 0, Math.PI / 2);
-var width = 1100;
-var height = 600;
+var width = 600;
+var height = 400;
 var canvas = document.createElement("canvas");
 canvas.width = width;
 canvas.height = height;
+canvas.style.width = "100%";
+canvas.style.height = "100%";
 document.getElementById("view").appendChild(canvas);
 var game = new GameEngine_1.GameEngine(canvas, player);
+var objects = [];
+// const planete_mesh = new Mesh(vec3)
+// for (let k=0; k< 10; k++){
+//   const planete = new GameObject
+// }
 // game events
-(_a = document
-    .getElementById("switch_mode_btn")) === null || _a === void 0 ? void 0 : _a.addEventListener("click", function (event) {
-    if (game.engine.mode == "Rasterization") {
-        game.load_mode("Raytracing");
-    }
-    else {
-        game.load_mode("Rasterization");
-    }
-});
+// document
+//   .getElementById("switch_mode_btn")
+//   ?.addEventListener("click", (event) => {
+//     if (game.engine.mode == "Rasterization") {
+//       game.load_mode("Raytracing");
+//     } else {
+//       game.load_mode("Rasterization");
+//     }
+//   });
 game.run();
 // DONE
 // Use WebGL
 // Make game environment
 // Static object dimensions (in game engine)
 // Inner objects in shader
-// TODO
-// Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
-// Use frameBuffer
-// Incrementing the data usage of texture by using lines
 // Dynamic object position and scale (point to the same mesh but with transforms)
+// Make Mode class to be able to switch mode easily
+// TODO
+// Use frameBuffer
+// Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
+// Use lights (or not ? and use only emmissive objects ?)
+// Incrementing the data usage of texture by using lines
+// Rotate transform of objects
 // use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
 // Refacto game structure
-// Graphics modes
 // See (again) about direction and why coords are reversed (reversed direction and reversed coords)
 // Create the game engine app
 // App file structure
 // Installer
 // Readme
 
-},{"./GameEngine":13}]},{},[18]);
+},{"./GameEngine":13}],20:[function(require,module,exports){
+"use strict";
+exports.__esModule = true;
+exports.raytracing_frag_shader_src = exports.raytracing_vertex_shader_src = void 0;
+var raytracing_vertex_shader_src = "#version 300 es\n\nprecision highp float;\n\nin vec4 aVertexPosition;\n\nvoid main() {\n    gl_Position = aVertexPosition;\n}\n\n";
+exports.raytracing_vertex_shader_src = raytracing_vertex_shader_src;
+var raytracing_frag_shader_src = "#version 300 es\n\n// Precisions\n\nprecision highp float;\nprecision mediump int;\n\n// Structures\n\nstruct Object\n{\n    float inner_objects_index;\n    float nb_inner_objects;\n    float parent_object_index;\n\n    float triangle_index;\n    float nb_triangles;\n    float material_index;\n\n    vec3 position;\n\n    vec3 dimensions;\n};\n\nstruct Material\n{\n    vec3 albedo; // the color of the material (for diffusion)\n    vec3 transparency; // the transparency of the material percentage that get out for 1m\n    vec3 metallic; //reflection irror like\n    vec3 roughness; // How the light is being dispersed when reflected\n    vec3 ior; // index of refraction ou IOR\n    vec3 emmissive;\n};\n\nstruct LightSource\n{\n    vec3 lightAmount;\n    vec3 position;\n};\n\n// Uniforms\n\nuniform sampler2D uVertices; // position\nuniform mediump usampler2D uTriangles; // vertices_index\nuniform sampler2D uObjects; // start_triangle_index, nb_triangles, material_index [, position, dimensions, transform_matrix (rotate, translate, scale)]\nuniform sampler2D uMaterials; // Albedo, Transparency, Metallic, Ior, Emmissive\nuniform sampler2D uLightSources; // LightAmount, Position\n\nuniform vec3 uCameraPosition;\nuniform vec3 uCameraDirection;\nuniform vec3 uCameraDirectionY;\nuniform vec3 uCameraDirectionX;\nuniform float uCameraFov;\nuniform float uCameraWidth;\nuniform float uCameraHeight;\n\nuniform float uTime;\n\n// Functions\n\nfloat rand(float seed);\nvec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes);\nfloat intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2);\nvec2 intersectBox(vec3 position, vec3 dimensions);\nbool inBox(vec3 position, vec3 box_position, vec3 dimensions);\nvec3 getPixelColor();\n\nfloat rand(float x){\n    // return 0.;\n    float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x);\n    return a - floor(a);\n    // return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);\n}\n\nvec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes){\n\n    float t = -1. ;\n    vec3 normale = vec3(0.,0.,0.);\n    float triangle_index = object.triangle_index;\n\n    while (triangle_index < object.triangle_index + object.nb_triangles){\n        \n        // coords of texture between 0 and 1 (looped so 1.x = 0.x)\n        vec2 triangle_coords = vec2( (triangle_index+0.5)/float(triangles_sizes.x) , 0 );\n        uvec4 triangle = texture(uTriangles, triangle_coords); // a channel always 1.\n\n        float vertices_width = float(vertices_sizes.x);\n\n        vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/ vertices_width, 0 )).xyz;\n        vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n        vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n\n        v0 = object.position + v0 * object.dimensions;\n        v1 = object.position + v1 * object.dimensions;\n        v2 = object.position + v2 * object.dimensions;\n\n        float t_triangle = intersectTriangle(cast_point, direction, v0, v1, v2);\n\n        vec3 hitPointTriangle = cast_point + t_triangle * direction;\n        bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);\n        if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){\n            t = t_triangle;\n\n            // Get normale\n            float vertices_width = float(vertices_sizes.x);\n            vec3 v0 = texture(uVertices, vec2( (float(triangle.x) + 0.5)/vertices_width, 0 )).xyz;\n            vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;\n            vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;\n            \n            normale = cross(v1 - v0, v2 - v0);\n            normale = normalize(normale);\n            // float area = length(normale); \n            // normale /= area;\n        }\n\n        triangle_index++;\n    }\n\n    return vec4(t, normale);\n}\n\nfloat intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2){\n    // Compute plane normale\n    \n    vec3 normale = cross(v1 - v0, v2 - v0); // no need to normalize\n    float area = length(normale); \n    normale /= area;\n\n    // check if ray parallel to triangle\n    // float NdotRayDirection = dot(normale, direction); \n    // if (fabs(NdotRayDirection) < 0.001)  //almost 0 \n    //     return false;  //they are parallel so they don't intersect ! \n\n    // compute t\n    float t = dot(v0 - cast_point, normale) / dot(direction, normale);\n    vec3 M = cast_point + t * direction;\n\n    // inside / outside test V1\n    vec3 C;  //vector perpendicular to triangle's plane\n    \n    // edge 0\n    C = cross(M - v0, v1 - v0); \n    if (dot(C, normale) > 0.) return -1.;  //M on the wrong side on the edge\n    \n    // edge 1\n    C = cross(M - v0, v2 - v0); \n    if (dot(C, normale) < 0.) return -1.;\n    \n    // edge 2\n    C = cross(M - v1, v2 - v1); \n    if (dot(C, normale) > 0.) return -1.; \n\n    return t;\n}\n\nbool inBox(vec3 position, vec3 box_position, vec3 dimensions){\n    return position.x < box_position.x && position.x > box_position.x - dimensions.x\n    && position.y < box_position.y && position.y > box_position.y - dimensions.y\n    && position.z < box_position.z && position.z > box_position.z - dimensions.z;\n}\n\nvec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimensions){\n    float min_t = 10000000.0;\n    float max_t = -10000000.0;\n\n    float t0 = (position.x - cast_point.x) / direction.x;\n    vec3 M0 = cast_point + t0 * direction;\n    float t1 = (position.x - dimensions.x - cast_point.x) / direction.x;\n    vec3 M1 = cast_point + t1 * direction;\n    float t2 = (position.y - cast_point.y) / direction.y;\n    vec3 M2 = cast_point + t2 * direction;\n    float t3 = (position.y - dimensions.y - cast_point.y) / direction.y;\n    vec3 M3 = cast_point + t3 * direction;\n    float t4 = (position.z - cast_point.z) / direction.z;\n    vec3 M4 = cast_point + t4 * direction;\n    float t5 = (position.z - dimensions.z - cast_point.z) / direction.z;\n    vec3 M5 = cast_point + t5 * direction;\n\n    if (M0.y < position.y && M0.y>position.y-dimensions.y && M0.z<position.z && M0.z>position.z-dimensions.z){\n        if (t0 < min_t){\n            min_t = t0;\n        }\n        if (t0 > max_t){\n            max_t = t0;\n        }\n    }\n    if (M1.y < position.y && M1.y>position.y-dimensions.y && M1.z<position.z && M1.z>position.z-dimensions.z){\n        if (t1 < min_t){\n            min_t = t1;\n        }\n        if (t1 > max_t){\n            max_t = t1;\n        }\n    }\n    if (M2.x < position.x && M2.x>position.x-dimensions.x && M2.z<position.z && M2.z>position.z-dimensions.z){\n        if (t2 < min_t){\n            min_t = t2;\n        }\n        if (t2 > max_t){\n            max_t = t2;\n        }\n    }\n    if (M3.x < position.x && M3.x>position.x-dimensions.x && M3.z<position.z && M3.z>position.z-dimensions.z){\n        if (t3 < min_t){\n            min_t = t3;\n        }\n        if (t3 > max_t){\n            max_t = t3;\n        }\n    }\n    if (M4.y < position.y && M4.y>position.y-dimensions.y && M4.x<position.x && M4.x>position.x-dimensions.x){\n        if (t4 < min_t){\n            min_t = t4;\n        }\n        if (t4 > max_t){\n            max_t = t4;\n        }\n    }\n    if (M5.y < position.y && M5.y>position.y-dimensions.y && M5.x<position.x && M5.x>position.x-dimensions.x){\n        if (t5 < min_t){\n            min_t = t5;\n        }\n        if (t5 > max_t){\n            max_t = t5;\n        }\n    }\n\n    return vec2(min_t, max_t);\n}\n\nvec3 getPixelColor(){\n    // texture sizes\n    ivec2 vertices_sizes = textureSize(uVertices, 0);\n    ivec2 triangles_sizes = textureSize(uTriangles, 0);\n    ivec2 objects_sizes = textureSize(uObjects, 0);\n    ivec2 materials_sizes = textureSize(uMaterials, 0);\n    ivec2 light_sources_sizes = textureSize(uLightSources, 0);\n\n    // Direction of the ray\n\n    // random number to offset ray\n    float rand_num =  rand(-1.);\n\n    float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;\n    float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;\n\n    vec3 direction =  -(uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz);\n    direction = normalize(direction);\n\n    // skybox_color defined by the direction\n    vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);\n\n\n\n    int step = 0;\n    int max_step = 20;\n    float distance = 0.;\n    vec3 cast_point = uCameraPosition;\n\n    float ray_percentage = 1.;\n    vec3 inLight = vec3(0.,0.,0.);\n    float diaphragme = 0.5;\n\n    float parent_object_index = 0.;\n\n    vec4 parent_object_inner_objects = texture(uObjects, vec2( (parent_object_index + 0.5) / float(objects_sizes.x) ));\n    vec4 parent_object_indices = texture(uObjects, vec2( (parent_object_index + 1. + 0.5) / float(objects_sizes.x) ));\n    vec4 parent_object_position = texture(uObjects, vec2( (parent_object_index + 2. + 0.5) / float(objects_sizes.x) ));\n    vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));\n    Object parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    \n    \n    // All ray steps\n    while (step < max_step && ray_percentage > 0.001){\n\n        float nb_inner_objects =  parent_object.nb_inner_objects;\n        float inner_object_index = parent_object.inner_objects_index;\n\n        // loop on inner objects\n\n        float next_t = -1.;\n        float t_object = -1.;\n        \n        // Find closest inner_object\n\n        Object closest_object;\n        bool hitting_object = false;\n\n        while (inner_object_index < parent_object.inner_objects_index + 4.*nb_inner_objects){\n            vec4 object_inner_objects = texture(uObjects, vec2( (inner_object_index + 0.5) / float(objects_sizes.x) ));\n            vec4 object_indices = texture(uObjects, vec2( (inner_object_index + 1. + 0.5) / float(objects_sizes.x) ));\n            vec4 object_position = texture(uObjects, vec2( (inner_object_index + 2. + 0.5) / float(objects_sizes.x) ));\n            vec4 object_dimensions = texture(uObjects, vec2( (inner_object_index + 3. + 0.5) / float(objects_sizes.x) ));\n            Object inner_object = Object(object_inner_objects.x, object_inner_objects.y, object_inner_objects.z, object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);\n\n            vec2 min_max_t = intersectBox(cast_point, direction, inner_object.position, inner_object.dimensions);\n            float min_t = min_max_t.x;\n            float max_t = min_max_t.y;\n\n            if (min_t < max_t && max_t>0.){ // Si le rayon intersect la box\n                float t = max(min_t, 0.); // Si min_t < 0. on est dans l'objet\n\n                if (t_object<0. || t < t_object){\n                    hitting_object = true;\n                    closest_object = inner_object;\n                    t_object = t;\n                    next_t = max_t - t_object + 0.01;\n                }\n            }\n\n            inner_object_index += 4.;\n        }\n\n        // Go in closest_object\n        if (hitting_object){\n\n\n            // change step\n            cast_point = cast_point + t_object * direction;\n            distance += t_object;\n\n            if (closest_object.nb_inner_objects > 0.){\n\n                // change parent_object\n\n                parent_object = closest_object;\n\n            } else {\n\n                // intersect Mesh\n\n                vec4 res = intersectMesh(closest_object, cast_point, direction, vertices_sizes, triangles_sizes);\n\n                float t_mesh = res.r;\n                vec3 normale = res.gba;\n                \n                float box_transparency = 0.9;\n\n                if (t_mesh > 0.){ // si on intersecte le mesh\n\n                    // Material\n    \n                    vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));\n                    vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));\n                    vec4 metallic = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) ));\n                    vec4 roughness = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) ));\n                    vec4 ior = texture(uMaterials, vec2( (closest_object.material_index + 4. + 0.5) / float(materials_sizes.x) ));\n                    vec4 emissive = texture(uMaterials, vec2( (closest_object.material_index + 5. + 0.5) / float(materials_sizes.x) ));\n                    \n                    Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, roughness.xyz, ior.xyz, emissive.xyz);    \n\n                    // box color (transparent)\n                    // float light_throug = pow(box_transparency, t_mesh);\n                    // inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n                    // ray_percentage *= light_throug;\n\n                    // go to mesh\n                    cast_point = cast_point + t_mesh * direction;\n                    distance += t_mesh;\n                    \n                    // Reflection\n                    if (rand(float(step)) < material.metallic.x){\n                        direction -= 2. * dot(direction, normale) * normale;\n                        direction = normalize(direction);\n                        cast_point = cast_point + 0.01 * direction;\n                    } else {\n                        // triangle light\n                        vec3 triangle_light = material.emmissive;\n                        inLight += ray_percentage*triangle_light;\n                        break;\n                    }\n\n                } else {\n                    // float light_throug = pow(box_transparency, next_t);\n                    // inLight += ray_percentage*vec3(1.-light_throug, 0., 0.);\n                    // ray_percentage *= light_throug;\n\n                    cast_point = cast_point + next_t * direction;\n                    distance += next_t;\n                }\n            }\n        } else {\n            if (parent_object.parent_object_index < 0.){ // we hit the skybox\n                inLight += ray_percentage*sky_box_color;\n                // inLight = vec3(ray_percentage);\n                break;\n            } else { // we go to parent box\n\n                // Move cast point\n\n\n                vec2 min_max_t = intersectBox(cast_point, direction, parent_object.position, parent_object.dimensions);\n                float min_t = min_max_t.x;\n                float max_t = min_max_t.y;\n\n                float parent_next_t = max_t + 0.01;\n\n                cast_point = cast_point + parent_next_t * direction;\n                distance += parent_next_t;\n\n                // Change parent_object\n                vec4 parent_object_inner_objects = texture(uObjects, vec2( (parent_object.parent_object_index + 0.5) / float(objects_sizes.x) ));\n                vec4 parent_object_indices = texture(uObjects, vec2( (parent_object.parent_object_index + 1. + 0.5) / float(objects_sizes.x) ));\n                vec4 parent_object_position = texture(uObjects, vec2( (parent_object.parent_object_index + 2. + 0.5) / float(objects_sizes.x) ));\n                vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object.parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));\n                parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    \n            }\n        }\n\n        step++;\n    }\n    // return vec3(float(step)/float(max_step));\n    // return vec3(distance/300.);\n    return diaphragme * inLight;\n}\n\n\nout vec4 fragColor;\n\nvoid main() {\n    vec3 color = getPixelColor();\n    fragColor = vec4(color ,1.);\n}\n\n";
+exports.raytracing_frag_shader_src = raytracing_frag_shader_src;
+
+},{}]},{},[19]);

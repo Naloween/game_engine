@@ -1,7 +1,3 @@
-// import * as te from "./triangle_engine.js";
-// import * as mat4 from "./glMatrix/src/mat4.js";
-// import * as vec3 from "./glMatrix/src/vec3.js";
-
 import { vec3, mat4 } from "gl-matrix";
 import { GraphicEngine } from "./GraphicEngine";
 import { Camera } from "./Camera";
@@ -143,41 +139,107 @@ class GameEngine {
   previousTimeStamp = 0;
   fps = 0;
 
-  objects: GameObject[] = [];
-  lights: Light[] = [];
-
   constructor(view: HTMLCanvasElement, player: Player) {
     this.player = player;
     this.view = view;
 
     //camera
-    const width = 1000;
-    const height = 600;
 
     const render_distance = 1000;
 
-    this.camera = new Camera(width, height, render_distance);
+    this.camera = new Camera(view.width, view.height, render_distance);
 
     //Graphic engine
     this.engine = new GraphicEngine(view.getContext("webgl2")!);
 
     this.generate_world();
 
-    this.load_mode("Raytracing");
-
     // Events
     this.load_events();
+
+    this.camera.position = vec3.clone(this.player.position);
+    this.camera.phi = this.player.phi;
+    this.camera.teta = this.player.teta;
+    this.camera.update();
+
+    this.engine.setCameraUniforms(this.camera);
+    this.engine.render();
   }
 
-  load_mode(mode: "Rasterization" | "Raytracing") {
-    this.engine.loadMode(mode);
+  // load_mode(mode: "Rasterization" | "Raytracing") {
+  //   this.engine.loadMode(mode);
 
-    const TransformMatrix = mat4.create();
-    this.engine.setTransformVertices(TransformMatrix);
-    this.engine.setCameraUniforms(this.camera);
-    this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1, 1, 1]);
+  //   const TransformMatrix = mat4.create();
+  //   this.engine.setTransformVertices(TransformMatrix);
+  //   this.engine.setCameraUniforms(this.camera);
+  //   this.engine.setCurrentMaterialUniforms([0.99, 0.99, 0.99], [1, 1, 1]);
 
-    this.engine.render();
+  //   this.engine.render();
+  // }
+
+  nextFrame(timestamp: number) {
+    if (this.player.rendering) {
+      //time
+      const dt = (timestamp - this.previousTimeStamp) / 1000; // in secondes
+      this.previousTimeStamp = timestamp;
+
+      // Player & camera
+
+      //gravity
+      // this.player.vitesse[2] -= 10 * dt;
+
+      //update player position
+      this.player.move(dt);
+
+      // const h = this.landscape(this.player.position[0], this.player.position[1]);
+      // if (this.player.position[2] < h + 2){
+      //     this.player.position[2] = h + 2;
+      //     this.player.vitesse[2] = 0;
+      // }
+
+      //draw frame
+      this.camera.position = vec3.clone(this.player.position);
+      this.camera.phi = this.player.phi;
+      this.camera.teta = this.player.teta;
+      this.camera.update();
+
+      this.engine.setCameraUniforms(this.camera);
+
+      this.engine.render();
+
+      //update infos
+
+      //fps
+      this.dt_fps += dt;
+      this.fps += 1;
+
+      if (this.dt_fps > 0.5) {
+        let fps = document.getElementById("fps")!;
+        fps.innerText = (1 / dt).toFixed(2) + "fps";
+        this.dt_fps = 0;
+        this.fps = 0;
+
+        //this.update_world();
+      }
+
+      //position infos
+      let element_position_x = document.getElementById("position_x")!;
+      let element_position_y = document.getElementById("position_y")!;
+      let element_position_z = document.getElementById("position_z")!;
+      element_position_x.innerText = "x: " + this.player.position[0].toFixed(2);
+      element_position_y.innerText = "y: " + this.player.position[1].toFixed(2);
+      element_position_z.innerText = "z: " + this.player.position[2].toFixed(2);
+
+      window.requestAnimationFrame(this.nextFrame.bind(this));
+    } else {
+      this.previousTimeStamp = timestamp;
+      window.requestAnimationFrame(this.nextFrame.bind(this));
+    }
+  }
+
+  run() {
+    console.log("starting Game...");
+    window.requestAnimationFrame(this.nextFrame.bind(this));
   }
 
   load_events() {
@@ -255,53 +317,8 @@ class GameEngine {
     );
   }
 
-  load_scene() {
-    const vertices: number[] = [];
-    const triangles: number[] = [];
-    const objects: number[] = [];
-    const materials: number[] = [];
-    const lights: number[] = [100, 100, 100, 0, 0, 0];
-
-    const worldObject = new GameObject(
-      vec3.fromValues(0, 0, 0),
-      vec3.fromValues(1, 1, 1),
-      new Mesh([], []),
-      new Material()
-    );
-
-    for (let object of this.objects) {
-      worldObject.addInnerObject(object);
-    }
-
-    let next_object_idndex = 0;
-
-    const objectsToAdd: GameObject[] = [worldObject];
-
-    // Make so that the objects are in the right order, each inner objects are successive
-    let object_index = 0;
-    while (object_index < objectsToAdd.length) {
-      const object = objectsToAdd[object_index];
-      object.array_index = next_object_idndex;
-      next_object_idndex++;
-
-      for (let inner_object of object.innerObjects) {
-        objectsToAdd.push(inner_object);
-      }
-
-      object_index++;
-    }
-
-    for (let object of objectsToAdd) {
-      object.load(objects, vertices, triangles, materials);
-    }
-
-    // console.log(objects);
-    console.log(vertices);
-    this.engine.setTextures(vertices, triangles, objects, materials, lights);
-  }
-
   generate_world() {
-    this.objects = [];
+    const game_objects: GameObject[] = [];
 
     const vertices = [
       vec3.fromValues(0, 0, 0),
@@ -322,13 +339,14 @@ class GameEngine {
 
     const my_mesh = new Mesh(vertices, triangles);
 
-    const material = new Material(vec3.fromValues(1, 0, 0));
+    const material = new Material();
+    material.emmissive = vec3.fromValues(1, 0, 0);
 
     const width = 20;
     const height = 20;
 
-    for (let k = 0; k < 2; k++) {
-      for (let k2 = 0; k2 < 10; k2++) {
+    for (let k = 0; k < 5; k++) {
+      for (let k2 = 0; k2 < 5; k2++) {
         const my_object = new GameObject(
           vec3.fromValues((height + 1) * k, (width + 1) * k2, -8),
           vec3.fromValues(height, width, 10),
@@ -357,76 +375,56 @@ class GameEngine {
           }
         }
 
-        this.objects.push(my_object);
+        game_objects.push(my_object);
       }
     }
 
-    this.load_scene();
+    this.load_scene(game_objects);
   }
 
-  nextFrame(timestamp: number) {
-    if (this.player.rendering) {
-      //time
-      const dt = (timestamp - this.previousTimeStamp) / 1000; // in secondes
-      this.previousTimeStamp = timestamp;
+  load_scene(game_objects: GameObject[]) {
+    const vertices: number[] = [];
+    const triangles: number[] = [];
+    const objects: number[] = [];
+    const materials: number[] = [];
+    const lights: number[] = [100, 100, 100, 0, 0, 0];
 
-      // Player & camera
+    const worldObject = new GameObject(
+      vec3.fromValues(0, 0, 0),
+      vec3.fromValues(1, 1, 1),
+      new Mesh([], []),
+      new Material()
+    );
 
-      //gravity
-      // this.player.vitesse[2] -= 10 * dt;
+    for (let object of game_objects) {
+      worldObject.addInnerObject(object);
+    }
 
-      //update player position
-      this.player.move(dt);
+    let next_object_idndex = 0;
 
-      // const h = this.landscape(this.player.position[0], this.player.position[1]);
-      // if (this.player.position[2] < h + 2){
-      //     this.player.position[2] = h + 2;
-      //     this.player.vitesse[2] = 0;
-      // }
+    const objectsToAdd: GameObject[] = [worldObject];
 
-      //draw frame
-      this.camera.position = vec3.clone(this.player.position);
-      this.camera.phi = this.player.phi;
-      this.camera.teta = this.player.teta;
-      this.camera.update();
+    // Make so that the objects are in the right order, each inner objects are successive
+    let object_index = 0;
+    while (object_index < objectsToAdd.length) {
+      const object = objectsToAdd[object_index];
+      object.array_index = next_object_idndex;
+      next_object_idndex++;
 
-      this.engine.setCameraUniforms(this.camera);
-
-      this.engine.render();
-
-      //update infos
-
-      //fps
-      this.dt_fps += dt;
-      this.fps += 1;
-
-      if (this.dt_fps > 0.5) {
-        let fps = document.getElementById("fps")!;
-        fps.innerText = (1 / dt).toFixed(2) + "fps";
-        this.dt_fps = 0;
-        this.fps = 0;
-
-        //this.update_world();
+      for (let inner_object of object.innerObjects) {
+        objectsToAdd.push(inner_object);
       }
 
-      //position infos
-      let element_position_x = document.getElementById("position_x")!;
-      let element_position_y = document.getElementById("position_y")!;
-      let element_position_z = document.getElementById("position_z")!;
-      element_position_x.innerText = "x: " + this.player.position[0].toFixed(2);
-      element_position_y.innerText = "y: " + this.player.position[1].toFixed(2);
-      element_position_z.innerText = "z: " + this.player.position[2].toFixed(2);
-
-      window.requestAnimationFrame(this.nextFrame.bind(this));
-    } else {
-      this.previousTimeStamp = timestamp;
-      window.requestAnimationFrame(this.nextFrame.bind(this));
+      object_index++;
     }
-  }
 
-  run() {
-    console.log("starting Game...");
-    window.requestAnimationFrame(this.nextFrame.bind(this));
+    for (let object of objectsToAdd) {
+      object.load(objects, vertices, triangles, materials);
+    }
+
+    // console.log(objects);
+    // console.log(vertices);
+    this.engine.setTextures(vertices, triangles, objects, materials, lights);
   }
 }
 

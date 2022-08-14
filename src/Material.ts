@@ -44,6 +44,9 @@ class Material {
     materials.push(this.metallic[0]);
     materials.push(this.metallic[1]);
     materials.push(this.metallic[2]);
+    materials.push(this.roughness[0]);
+    materials.push(this.roughness[1]);
+    materials.push(this.roughness[2]);
     materials.push(this.ior[0]);
     materials.push(this.ior[1]);
     materials.push(this.ior[2]);

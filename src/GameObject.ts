@@ -50,9 +50,6 @@ class Mesh {
         )
       );
     }
-
-    console.log(min_point);
-    console.log(max_point);
   }
 
   load(vertices: number[], triangles: number[]) {
