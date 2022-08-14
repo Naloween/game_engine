@@ -71,7 +71,7 @@ uniform float uTime;
 // Functions
 
 float rand(float seed);
-vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes);
+vec4 intersectMesh(vec3 object_absolute_position, vec3 object_absolute_dimensions, Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes);
 float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2);
 vec2 intersectBox(vec3 position, vec3 dimensions);
 bool inBox(vec3 position, vec3 box_position, vec3 dimensions);
@@ -84,7 +84,7 @@ float rand(float x){
     // return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
 }
 
-vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes){
+vec4 intersectMesh(vec3 object_absolute_position, vec3 object_absolute_dimensions, Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes){
 
     float t = -1. ;
     vec3 normale = vec3(0.,0.,0.);
@@ -102,14 +102,14 @@ vec4 intersectMesh(Object object, vec3 cast_point, vec3 direction, ivec2 vertice
         vec3 v1 = texture(uVertices, vec2( (float(triangle.y) + 0.5)/vertices_width , 0 )).xyz;
         vec3 v2 = texture(uVertices, vec2( (float(triangle.z) + 0.5)/vertices_width , 0 )).xyz;
 
-        v0 = object.position + v0 * object.dimensions;
-        v1 = object.position + v1 * object.dimensions;
-        v2 = object.position + v2 * object.dimensions;
+        v0 = object_absolute_position + v0 * object_absolute_dimensions;
+        v1 = object_absolute_position + v1 * object_absolute_dimensions;
+        v2 = object_absolute_position + v2 * object_absolute_dimensions;
 
         float t_triangle = intersectTriangle(cast_point, direction, v0, v1, v2);
 
         vec3 hitPointTriangle = cast_point + t_triangle * direction;
-        bool is_in_box = inBox(hitPointTriangle, object.position, object.dimensions);
+        bool is_in_box = inBox(hitPointTriangle, object_absolute_position, object_absolute_dimensions);
         if (is_in_box && (t_triangle > 0. && (t < 0. || t_triangle < t))){
             t = t_triangle;
 
@@ -281,6 +281,9 @@ vec3 getPixelColor(){
     vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));
     Object parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    
     
+    vec3 parent_position = vec3(0.);
+    vec3 parent_dimensions = vec3(-1.);
+
     // All ray steps
     while (step < max_step && ray_percentage > 0.001){
 
@@ -304,7 +307,7 @@ vec3 getPixelColor(){
             vec4 object_dimensions = texture(uObjects, vec2( (inner_object_index + 3. + 0.5) / float(objects_sizes.x) ));
             Object inner_object = Object(object_inner_objects.x, object_inner_objects.y, object_inner_objects.z, object_indices.x, object_indices.y, object_indices.z, object_position.xyz, object_dimensions.xyz);
 
-            vec2 min_max_t = intersectBox(cast_point, direction, inner_object.position, inner_object.dimensions);
+            vec2 min_max_t = intersectBox(cast_point, direction, parent_position + inner_object.position, inner_object.dimensions);
             float min_t = min_max_t.x;
             float max_t = min_max_t.y;
 
@@ -325,7 +328,6 @@ vec3 getPixelColor(){
         // Go in closest_object
         if (hitting_object){
 
-
             // change step
             cast_point = cast_point + t_object * direction;
             distance += t_object;
@@ -333,14 +335,15 @@ vec3 getPixelColor(){
             if (closest_object.nb_inner_objects > 0.){
 
                 // change parent_object
-
                 parent_object = closest_object;
+                parent_position += closest_object.position;
 
             } else {
 
                 // intersect Mesh
 
-                vec4 res = intersectMesh(closest_object, cast_point, direction, vertices_sizes, triangles_sizes);
+                vec4 res = intersectMesh(parent_position + closest_object.position, closest_object.dimensions,
+                    closest_object, cast_point, direction, vertices_sizes, triangles_sizes);
 
                 float t_mesh = res.r;
                 vec3 normale = res.gba;
@@ -399,8 +402,7 @@ vec3 getPixelColor(){
 
                 // Move cast point
 
-
-                vec2 min_max_t = intersectBox(cast_point, direction, parent_object.position, parent_object.dimensions);
+                vec2 min_max_t = intersectBox(cast_point, direction, parent_position, parent_object.dimensions);
                 float min_t = min_max_t.x;
                 float max_t = min_max_t.y;
 
@@ -410,11 +412,15 @@ vec3 getPixelColor(){
                 distance += parent_next_t;
 
                 // Change parent_object
+                parent_position -= parent_object.position;
+
                 vec4 parent_object_inner_objects = texture(uObjects, vec2( (parent_object.parent_object_index + 0.5) / float(objects_sizes.x) ));
                 vec4 parent_object_indices = texture(uObjects, vec2( (parent_object.parent_object_index + 1. + 0.5) / float(objects_sizes.x) ));
                 vec4 parent_object_position = texture(uObjects, vec2( (parent_object.parent_object_index + 2. + 0.5) / float(objects_sizes.x) ));
                 vec4 parent_object_dimensions = texture(uObjects, vec2( (parent_object.parent_object_index + 3. + 0.5) / float(objects_sizes.x) ));
-                parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z, parent_object_indices.x, parent_object_indices.y, parent_object_indices.z, parent_object_position.xyz, parent_object_dimensions.xyz);    
+                parent_object = Object(parent_object_inner_objects.x, parent_object_inner_objects.y, parent_object_inner_objects.z,
+                    parent_object_indices.x, parent_object_indices.y, parent_object_indices.z,
+                    parent_object_position.xyz, parent_object_dimensions.xyz);    
             }
         }
 

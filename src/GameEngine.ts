@@ -357,11 +357,7 @@ class GameEngine {
         for (let i = 0; i < 10; i++) {
           for (let j = 0; j < 10; j++) {
             const my_object2 = new GameObject(
-              vec3.fromValues(
-                2 * i + (height + 1) * k,
-                2 * j + (width + 1) * k2,
-                0
-              ),
+              vec3.fromValues(2 * i, 2 * j, 0),
               vec3.fromValues(
                 0.5 + Math.random(),
                 0.5 + Math.random(),
