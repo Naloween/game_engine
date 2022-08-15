@@ -339,24 +339,35 @@ class GameEngine {
 
     const my_mesh = new Mesh(vertices, triangles);
 
-    const material = new Material();
-    material.emmissive = vec3.fromValues(1, 0, 0);
-    material.metallic = vec3.fromValues(0.5, 0, 0);
+    const material1 = new Material();
+    material1.emmissive = vec3.fromValues(1, 0, 0);
+
+    const material2 = new Material();
+    material2.metallic = 1;
+    material2.roughness = 0;
+
+    const material3 = new Material();
+    material3.albedo = vec3.fromValues(1, 1, 1);
+    material3.roughness = 1;
+    // material3.metallic = 0.5;
 
     const width = 20;
     const height = 20;
 
-    for (let k = 0; k < 5; k++) {
-      for (let k2 = 0; k2 < 5; k2++) {
+    for (let k = 0; k < 2; k++) {
+      for (let k2 = 0; k2 < 2; k2++) {
         const my_object = new GameObject(
           vec3.fromValues((height + 1) * k, (width + 1) * k2, -8),
           vec3.fromValues(height, width, 10),
           my_mesh,
-          material
+          material1
         );
 
         for (let i = 0; i < 10; i++) {
           for (let j = 0; j < 10; j++) {
+            let material = Math.random() < 0.5 ? material1 : material2;
+            material = Math.random() < 0.5 ? material3 : material;
+
             const my_object2 = new GameObject(
               vec3.fromValues(2 * i, 2 * j, 0),
               vec3.fromValues(

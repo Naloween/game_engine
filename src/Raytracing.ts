@@ -633,7 +633,11 @@ class Raytracing extends GraphicMode {
 
     if (
       this.previousCameraDirection[0] != direction[0] ||
-      this.previousCameraPosition[0] != camera.position[0]
+      this.previousCameraDirection[1] != direction[1] ||
+      this.previousCameraDirection[2] != direction[2] ||
+      this.previousCameraPosition[0] != camera.position[0] ||
+      this.previousCameraPosition[1] != camera.position[1] ||
+      this.previousCameraPosition[2] != camera.position[2]
     ) {
       this.frameNumber = 1;
     }

@@ -63,10 +63,12 @@ struct Material
 {
     vec3 albedo; // the color of the material (for diffusion)
     vec3 transparency; // the transparency of the material percentage that get out for 1m
-    vec3 metallic; //reflection irror like
-    vec3 roughness; // How the light is being dispersed when reflected
-    vec3 ior; // index of refraction ou IOR
     vec3 emmissive;
+
+    float metallic; //reflection irror like
+    float roughness; // How the light is being dispersed when reflected
+    float ior; // index of refraction ou IOR
+
 };
 
 struct LightSource
@@ -102,13 +104,14 @@ vec4 intersectMesh(vec3 object_absolute_position, vec3 object_absolute_dimension
 float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2);
 vec2 intersectBox(vec3 position, vec3 dimensions);
 bool inBox(vec3 position, vec3 box_position, vec3 dimensions);
+vec3 getSkyBoxLight(vec3 direction);
 vec3 getPixelLight();
 
 float rand(float x){
     // return 0.;
     // float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)/10.;
     // float a = uTime + sin( (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x) * 424.242);
-    float a = uTime *  ( 100. + gl_FragCoord.x * gl_FragCoord.y);
+    float a = uTime *  ( 100. + gl_FragCoord.x * gl_FragCoord.y) * x;
     return a -  floor(a);
     // return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
 }
@@ -267,6 +270,15 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
     return vec2(min_t, max_t);
 }
 
+vec3 getSkyBoxLight(vec3 direction){
+
+    if (direction.z > 0.){
+        return vec3(0.5, 0.3 * direction.z, direction.z);
+    }
+    return vec3(1.+direction.z);
+    // return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
+}
+
 vec3 getPixelLight(){
     // texture sizes
     ivec2 vertices_sizes = textureSize(uVertices, 0);
@@ -278,7 +290,7 @@ vec3 getPixelLight(){
     // Direction of the ray
 
     // random number to offset ray
-    float rand_num = rand(-1.);
+    float rand_num = 1.*(2.*rand(-1.)-1.);
 
     float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;
     float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;
@@ -286,19 +298,15 @@ vec3 getPixelLight(){
     vec3 direction =  uCameraDirection.xyz - dx * uCameraDirectionX.xyz - dy * uCameraDirectionY.xyz;
     direction = normalize(direction);
 
-    // skybox_color defined by the direction
-    vec3 sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
-
-
 
     int step = 0;
     int max_step = 20;
     float distance = 0.;
     vec3 cast_point = uCameraPosition;
 
-    float ray_percentage = 1.;
+    vec3 ray_percentage = vec3(1.);
     vec3 inLight = vec3(0.,0.,0.);
-    float diaphragme = 100.;
+    float diaphragme = 200.;
 
     float parent_object_index = 0.;
 
@@ -311,8 +319,10 @@ vec3 getPixelLight(){
     vec3 parent_position = vec3(0.);
     vec3 parent_dimensions = vec3(-1.);
 
+    bool rebond_indirect_lightning = false;
+
     // All ray steps
-    while (step < max_step && ray_percentage > 0.001){
+    while (step < max_step && length(ray_percentage) > 0.001){
 
         float nb_inner_objects =  parent_object.nb_inner_objects;
         float inner_object_index = parent_object.inner_objects_index;
@@ -360,6 +370,7 @@ vec3 getPixelLight(){
             cast_point = cast_point + t_object * direction;
             distance += t_object;
 
+            // If has inner objects
             if (closest_object.nb_inner_objects > 0.){
 
                 // change parent_object
@@ -382,14 +393,12 @@ vec3 getPixelLight(){
 
                     // Material
     
-                    vec4 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) ));
-                    vec4 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) ));
-                    vec4 metallic = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) ));
-                    vec4 roughness = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) ));
-                    vec4 ior = texture(uMaterials, vec2( (closest_object.material_index + 4. + 0.5) / float(materials_sizes.x) ));
-                    vec4 emissive = texture(uMaterials, vec2( (closest_object.material_index + 5. + 0.5) / float(materials_sizes.x) ));
-                    
-                    Material material = Material(albedo.xyz, transparency.xyz, metallic.xyz, roughness.xyz, ior.xyz, emissive.xyz);    
+                    vec3 albedo = texture(uMaterials, vec2( (closest_object.material_index + 0.5) / float(materials_sizes.x) )).xyz;
+                    vec3 transparency = texture(uMaterials, vec2( (closest_object.material_index + 1. + 0.5) / float(materials_sizes.x) )).xyz;
+                    vec3 emissive = texture(uMaterials, vec2( (closest_object.material_index + 2. + 0.5) / float(materials_sizes.x) )).xyz;
+                    vec3 met_rough_ior = texture(uMaterials, vec2( (closest_object.material_index + 3. + 0.5) / float(materials_sizes.x) )).xyz;
+ 
+                    Material material = Material(albedo, transparency, emissive, met_rough_ior.x, met_rough_ior.y, met_rough_ior.z);    
 
                     // box color (transparent)
                     // float light_throug = pow(box_transparency, t_mesh);
@@ -400,9 +409,22 @@ vec3 getPixelLight(){
                     cast_point = cast_point + t_mesh * direction;
                     distance += t_mesh;
                     
-                    // Reflection
-                    if (rand(float(step)) < material.metallic.x){
+                    // does the ray reflect ?
+                    if (rand(float(step)) < material.metallic){
                         cast_point -= 0.001 * direction;
+
+                        //roughness
+                        vec3 dnormale = material.roughness * vec3(2.*rand(float(step) + 0.)-1.,
+                            2.*rand(float(step) + 1.)-1.,
+                            2.*rand(float(step) + 2.)-1.); // Use roughness to randomize normal
+                        
+                        if (dot(dnormale, normale) > 0.){
+                            dnormale = - dnormale;
+                        }
+
+                        normale += dnormale;
+                        normale = normalize(normale);
+                        
                         float c = dot(direction, normale);
 
                         if (c < 0.){
@@ -413,10 +435,37 @@ vec3 getPixelLight(){
                         direction = normalize(direction);
                     } else {
                         // triangle light
-                        vec3 triangle_light = material.emmissive;
-                        inLight += ray_percentage*triangle_light;
-                        cast_point = cast_point + 0.001 * direction;
-                        break;
+                        inLight += ray_percentage*material.emmissive;
+
+                        //indirect lightning
+                        ray_percentage *= material.albedo;
+                        cast_point -= 0.001 * direction;
+
+                        //roughness
+                        vec3 dnormale = material.roughness * vec3(2.*rand(float(step) + 0.)-1.,
+                            2.*rand(float(step) + 1.)-1.,
+                            2.*rand(float(step) + 2.)-1.); // Use roughness to randomize normal
+                        
+                        if (dot(dnormale, normale) > 0.){
+                            dnormale = - dnormale;
+                        }
+
+                        normale += dnormale;
+                        normale = normalize(normale);
+
+                        float c = dot(direction, normale);
+                        if (c < 0.){
+                            direction += 2. * dot(direction, normale) * normale;
+                        } else {
+                            direction -= 2. * dot(direction, normale) * normale;
+                        }
+                        direction = normalize(direction);
+
+                        if(rebond_indirect_lightning){
+                            break;
+                        }
+
+                        rebond_indirect_lightning = true;
                     }
 
                 } else {
@@ -430,9 +479,8 @@ vec3 getPixelLight(){
             }
         } else {
             if (parent_object.parent_object_index < 0.){ // we hit the skybox
-                sky_box_color = vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
-                inLight += ray_percentage*sky_box_color;
-                // inLight = vec3(ray_percentage);
+                vec3 sky_box_light = getSkyBoxLight(direction);
+                inLight += ray_percentage*sky_box_light;
                 break;
             } else { // we go to parent box
 

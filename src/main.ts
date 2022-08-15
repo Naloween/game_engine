@@ -69,19 +69,19 @@ game.run();
 // Inner objects in shader
 // Dynamic object position and scale (point to the same mesh but with transforms)
 // Make Mode class to be able to switch mode easily
+// See (again) about direction and why coords are reversed (reversed direction and reversed coords objects and triangles)
+// Use frameBuffer
 
 // TODO
 
-// Use frameBuffer
 // Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
 // Use lights (or not ? and use only emmissive objects ?)
 // Incrementing the data usage of texture by using lines
 // Rotate transform of objects
 // use different primitives (other than triangles, spheres etc...)
 // Use texture and non-uniform materials on object (+ normals)
-// Refacto game structure
-// See (again) about direction and why coords are reversed (reversed direction and reversed coords objects and triangles)
-// Create the game engine app
+// Make rasterization graphic mode
 // App file structure
+// Create the game engine app
 // Installer
 // Readme
