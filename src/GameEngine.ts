@@ -341,7 +341,7 @@ class GameEngine {
 
     const material = new Material();
     material.emmissive = vec3.fromValues(1, 0, 0);
-    material.metallic = vec3.fromValues(1, 0, 0);
+    material.metallic = vec3.fromValues(0.5, 0, 0);
 
     const width = 20;
     const height = 20;

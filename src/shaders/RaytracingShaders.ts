@@ -10,6 +10,31 @@ void main() {
 
 `;
 
+const raytracing_frag_shader_frame_src = `#version 300 es
+
+precision highp float;
+
+uniform highp usampler2D uRenderTexture;
+uniform float uFrameNumber;
+
+out vec4 fragColor;
+
+void main() {
+
+    vec2 render_texture_sizes = vec2(textureSize(uRenderTexture, 0));
+    vec2 coords = vec2( gl_FragCoord.x / render_texture_sizes.x, gl_FragCoord.y / render_texture_sizes.y);
+    // vec3 color = vec3(float(render_texture_sizes.x)/10.); //dimensions : (4,1)
+    uvec3 light = texture(uRenderTexture, coords).rgb;
+    vec3 color = (vec3(light)/255.) / uFrameNumber;
+
+    fragColor = vec4(color,1.);
+
+    // float l = uFrameNumber/100.;
+    // fragColor = vec4(l, l, l,1.);
+}
+
+`;
+
 const raytracing_frag_shader_src = `#version 300 es
 
 // Precisions
@@ -67,6 +92,8 @@ uniform float uCameraWidth;
 uniform float uCameraHeight;
 
 uniform float uTime;
+uniform float uFrameNumber;
+uniform highp usampler2D uRenderTexture;
 
 // Functions
 
@@ -75,7 +102,7 @@ vec4 intersectMesh(vec3 object_absolute_position, vec3 object_absolute_dimension
 float intersectTriangle(vec3 cast_point, vec3 direction, vec3 v0, vec3 v1, vec3 v2);
 vec2 intersectBox(vec3 position, vec3 dimensions);
 bool inBox(vec3 position, vec3 box_position, vec3 dimensions);
-vec3 getPixelColor();
+vec3 getPixelLight();
 
 float rand(float x){
     // return 0.;
@@ -238,7 +265,7 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
     return vec2(min_t, max_t);
 }
 
-vec3 getPixelColor(){
+vec3 getPixelLight(){
     // texture sizes
     ivec2 vertices_sizes = textureSize(uVertices, 0);
     ivec2 triangles_sizes = textureSize(uTriangles, 0);
@@ -249,7 +276,7 @@ vec3 getPixelColor(){
     // Direction of the ray
 
     // random number to offset ray
-    float rand_num =  rand(-1.);
+    float rand_num = rand(-1.);
 
     float dx = uCameraFov * (rand_num + gl_FragCoord.x - uCameraWidth/2.) / uCameraHeight;
     float dy = uCameraFov * (uCameraHeight - (rand_num + gl_FragCoord.y) - uCameraHeight/2.) / uCameraHeight;
@@ -269,7 +296,7 @@ vec3 getPixelColor(){
 
     float ray_percentage = 1.;
     vec3 inLight = vec3(0.,0.,0.);
-    float diaphragme = 0.5;
+    float diaphragme = 100.;
 
     float parent_object_index = 0.;
 
@@ -439,13 +466,27 @@ vec3 getPixelColor(){
 }
 
 
-out vec4 fragColor;
+out uvec4 fragColor;
 
 void main() {
-    vec3 color = getPixelColor();
-    fragColor = vec4(color ,1.);
+    vec2 render_texture_sizes = vec2(textureSize(uRenderTexture, 0));
+    vec2 coords = vec2( gl_FragCoord.x / render_texture_sizes.x, gl_FragCoord.y / render_texture_sizes.y);
+    uvec3 previous_light = texture(uRenderTexture, coords).rgb;
+
+    if (uFrameNumber == 1.){
+        previous_light = uvec3(0);
+    }
+
+    uvec3 light = uvec3(getPixelLight()) + previous_light;
+    // uvec3 light = uvec3(255.* render_texture_sizes.y/800., 0,0) + previous_light;
+
+    fragColor = uvec4(light, 255);
 }
 
 `;
 
-export { raytracing_vertex_shader_src, raytracing_frag_shader_src };
+export {
+  raytracing_vertex_shader_src,
+  raytracing_frag_shader_src,
+  raytracing_frag_shader_frame_src,
+};
