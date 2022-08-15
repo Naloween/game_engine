@@ -106,7 +106,9 @@ vec3 getPixelLight();
 
 float rand(float x){
     // return 0.;
-    float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)/10.;
+    // float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)/10.;
+    // float a = uTime + sin( (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x) * 424.242);
+    float a = uTime *  ( 100. + gl_FragCoord.x * gl_FragCoord.y);
     return a -  floor(a);
     // return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
 }
