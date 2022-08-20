@@ -71,16 +71,23 @@ game.run();
 // Make Mode class to be able to switch mode easily
 // See (again) about direction and why coords are reversed (reversed direction and reversed coords objects and triangles)
 // Use frameBuffer
+// Use material to make use of the ray to have beautiful graphics -> indirect lightning/roughness/emmissive
+// Better random using and random noise texture
+// Denoising
 
 // TODO
 
-// Use material to make use of the ray to have beautiful graphics -> refraction/roughness/emmissive
-// Use lights (or not ? and use only emmissive objects ?)
+// Better denoising
+// Roughness (now it is only 0 or 1.)
+// Make refraction, use of hue
 // Incrementing the data usage of texture by using lines
+// use different primitives (other than triangles) -> spheres etc...
+// Use lights (or not ? and use only emmissive objects ?)
 // Rotate transform of objects
-// use different primitives (other than triangles, spheres etc...)
-// Use texture and non-uniform materials on object (+ normals)
+// Import 3D models
+// Use material texture on object (matallic map, albedo map etc...) + normal map
 // Make rasterization graphic mode
+// Use non uniform material on transparent object (like the transparency can decrease the farer you go behind the surface (triangle))
 // App file structure
 // Create the game engine app
 // Installer

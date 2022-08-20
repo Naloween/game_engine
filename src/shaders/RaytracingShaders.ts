@@ -19,13 +19,74 @@ uniform float uFrameNumber;
 
 out vec4 fragColor;
 
+#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
+#define INV_PI 0.31830988618379067153776752674503
+
+vec3 smartDeNoise(usampler2D tex, vec2 uv, float sigma, float kSigma, float threshold);
+
+//  smartDeNoise - parameters
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+//  sampler2D tex     - sampler image / texture
+//  vec2 uv           - actual fragment coord
+//  float sigma  >  0 - sigma Standard Deviation
+//  float kSigma >= 0 - sigma coefficient 
+//      kSigma * sigma  -->  radius of the circular kernel
+//  float threshold   - edge sharpening threshold 
+
+vec3 smartDeNoise(usampler2D tex, vec2 uv, float sigma, float kSigma, float threshold)
+{
+    float radius = round(kSigma*sigma);
+    float radQ = radius * radius;
+    
+    float invSigmaQx2 = .5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
+    float invSigmaQx2PI = INV_PI * invSigmaQx2;    // 1.0 / (sqrt(PI) * sigma)
+    
+    float invThresholdSqx2 = .5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
+    float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma)
+    
+    vec4 centrPx = vec4(texture(tex,uv));
+    
+    float zBuff = 0.0;
+    vec4 aBuff = vec4(0.0);
+    vec2 size = vec2(textureSize(tex, 0));
+    
+    for(float x=-radius; x <= radius; x++) {
+        float pt = sqrt(radQ-x*x);  // pt = yRadius: have circular trend
+        for(float y=-pt; y <= pt; y++) {
+            vec2 d = vec2(x,y);
+
+            float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI; 
+            
+            vec4 walkPx =  vec4(texture(tex,uv+d/size));
+
+            vec4 dC = walkPx-centrPx;
+            float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+                                 
+            zBuff += deltaFactor;
+            aBuff += deltaFactor*walkPx;
+        }
+    }
+    return (aBuff/zBuff).rgb;
+}
+
 void main() {
+
 
     vec2 render_texture_sizes = vec2(textureSize(uRenderTexture, 0));
     vec2 coords = vec2( gl_FragCoord.x / render_texture_sizes.x, gl_FragCoord.y / render_texture_sizes.y);
-    // vec3 color = vec3(float(render_texture_sizes.x)/10.); //dimensions : (4,1)
-    uvec3 light = texture(uRenderTexture, coords).rgb;
-    vec3 color = (vec3(light)/255.) / uFrameNumber;
+
+    vec3 light = vec3(texture(uRenderTexture, coords).rgb);
+    if (gl_FragCoord.x > 300.){
+        light = smartDeNoise(uRenderTexture, coords, 5.0, 1.0, 30. * uFrameNumber);
+        // light = vec3(255.,0.,0.);
+    }
+
+    vec3 color = (light/255.) / uFrameNumber;
+
+    if (gl_FragCoord.x > 300. && gl_FragCoord.x < 301.){
+        color = vec3(1.,1.,1.);
+    }
 
     fragColor = vec4(color,1.);
 
@@ -96,6 +157,7 @@ uniform float uCameraHeight;
 uniform float uTime;
 uniform float uFrameNumber;
 uniform highp usampler2D uRenderTexture;
+uniform sampler2D uNoiseTexture;
 
 // Functions
 
@@ -108,12 +170,27 @@ vec3 getSkyBoxLight(vec3 direction);
 vec3 getPixelLight();
 
 float rand(float x){
-    // return 0.;
     // float a = uTime * (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)/10.;
     // float a = uTime + sin( (gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x) * 424.242);
-    float a = uTime *  ( 100. + gl_FragCoord.x * gl_FragCoord.y) * x;
-    return a -  floor(a);
     // return fract(sin(uTime + gl_FragCoord.x + uCameraWidth*gl_FragCoord.y + x)*424242.0);
+
+    // float a = uTime *  ( 100. + gl_FragCoord.x * gl_FragCoord.y) * x;
+    // return a -  floor(a);
+
+    // Tests
+    vec2 rand_texture_sizes = vec2(textureSize(uNoiseTexture, 0));
+    vec2 coords = vec2( (gl_FragCoord.x) / rand_texture_sizes.x, gl_FragCoord.y / rand_texture_sizes.y);
+    vec3 random_vec = texture(uNoiseTexture, coords).rgb;
+
+    // for(float k = 1.; k<uFrameNumber; k++){
+    //     coords = random_vec.gb;
+    //     random_vec = texture(uNoiseTexture, coords).rgb;
+    // }
+
+    coords = random_vec.gb * uFrameNumber * x;
+    random_vec = texture(uNoiseTexture, coords).rgb;
+
+    return random_vec.r;
 }
 
 vec4 intersectMesh(vec3 object_absolute_position, vec3 object_absolute_dimensions, Object object, vec3 cast_point, vec3 direction, ivec2 vertices_sizes, ivec2 triangles_sizes){
@@ -272,10 +349,13 @@ vec2 intersectBox(vec3 cast_point, vec3 direction, vec3 position, vec3 dimension
 
 vec3 getSkyBoxLight(vec3 direction){
 
-    if (direction.z > 0.){
-        return vec3(0.5, 0.3 * direction.z, direction.z);
-    }
-    return vec3(1.+direction.z);
+    return vec3(0.3 * direction.z,0.5 * direction.z,1. * direction.z);
+
+    // if (direction.z > 0.){
+    //     return vec3(0.5, 0.3 * direction.z, direction.z);
+    // }
+    // return vec3(1.+direction.z);
+
     // return vec3(direction.x/2. + 0.5, direction.y/2. + 0.5, direction.z/2. + 0.5);
 }
 
@@ -414,16 +494,11 @@ vec3 getPixelLight(){
                         cast_point -= 0.001 * direction;
 
                         //roughness
-                        vec3 dnormale = material.roughness * vec3(2.*rand(float(step) + 0.)-1.,
-                            2.*rand(float(step) + 1.)-1.,
-                            2.*rand(float(step) + 2.)-1.); // Use roughness to randomize normal
-                        
-                        if (dot(dnormale, normale) > 0.){
-                            dnormale = - dnormale;
-                        }
-
-                        normale += dnormale;
-                        normale = normalize(normale);
+                        // direction = 2. * vec3(
+                        //     rand(float(step) + 0.),
+                        //     rand(float(step) + 1.),
+                        //     rand(float(step) + 2.)
+                        //     ) - 1.;
                         
                         float c = dot(direction, normale);
 
@@ -441,24 +516,25 @@ vec3 getPixelLight(){
                         ray_percentage *= material.albedo;
                         cast_point -= 0.001 * direction;
 
-                        //roughness
-                        vec3 dnormale = material.roughness * vec3(2.*rand(float(step) + 0.)-1.,
-                            2.*rand(float(step) + 1.)-1.,
-                            2.*rand(float(step) + 2.)-1.); // Use roughness to randomize normal
+                        //roughness TODO better !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                         
-                        if (dot(dnormale, normale) > 0.){
-                            dnormale = - dnormale;
+                        // Make direction totaly random
+                        direction = 2. * vec3(
+                            rand(float(step) + 0.),
+                            rand(float(step) + 1.),
+                            rand(float(step) + 2.)
+                            ) - 1.;
+                        
+                        if (dot(direction, normale) > 0.){
+                            direction = - direction;
                         }
 
-                        normale += dnormale;
-                        normale = normalize(normale);
-
-                        float c = dot(direction, normale);
-                        if (c < 0.){
-                            direction += 2. * dot(direction, normale) * normale;
-                        } else {
-                            direction -= 2. * dot(direction, normale) * normale;
-                        }
+                        // float c = dot(direction, normale);
+                        // if (c < 0.){
+                        //     direction += 2. * dot(direction, normale) * normale;
+                        // } else {
+                        //     direction -= 2. * dot(direction, normale) * normale;
+                        // }
                         direction = normalize(direction);
 
                         if(rebond_indirect_lightning){
@@ -528,7 +604,6 @@ void main() {
     }
 
     uvec3 light = uvec3(getPixelLight()) + previous_light;
-    // uvec3 light = uvec3(255.* render_texture_sizes.y/800., 0,0) + previous_light;
 
     fragColor = uvec4(light, 255);
 }

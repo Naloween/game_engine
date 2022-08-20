@@ -14,6 +14,7 @@ class Raytracing extends GraphicMode {
 
   renderTexture0: WebGLTexture;
   renderTexture1: WebGLTexture;
+  noiseTexture: WebGLTexture;
   timeLocation: WebGLUniformLocation;
   trianglesCanvasBuffer: WebGLBuffer;
   frameBuffer: WebGLFramebuffer;
@@ -45,6 +46,7 @@ class Raytracing extends GraphicMode {
   objectsLocation: WebGLUniformLocation;
   materialsLocation: WebGLUniformLocation;
   lightSourcesLocation: WebGLUniformLocation;
+  noiseLocation: WebGLUniformLocation;
 
   // Frame computing
   renderTextureLocation: WebGLUniformLocation;
@@ -236,10 +238,6 @@ class Raytracing extends GraphicMode {
       "uCameraHeight"
     )!;
 
-    this.materialsLocation = this.gl.getUniformLocation(
-      this.shaderProgram,
-      "uMaterials"
-    )!;
     this.timeLocation = this.gl.getUniformLocation(
       this.shaderProgram,
       "uTime"
@@ -265,6 +263,10 @@ class Raytracing extends GraphicMode {
     this.lightSourcesLocation = this.gl.getUniformLocation(
       this.shaderProgram,
       "uLightSources"
+    )!;
+    this.noiseLocation = this.gl.getUniformLocation(
+      this.shaderProgram,
+      "uNoiseTexture"
     )!;
 
     this.renderTextureLocation = this.gl.getUniformLocation(
@@ -308,12 +310,12 @@ class Raytracing extends GraphicMode {
   }
 
   loadTextures() {
-    console.log(this.gl.canvas.width);
     this.verticesTexture = this.gl.createTexture()!;
     this.trianglesTexture = this.gl.createTexture()!;
     this.objectsTexture = this.gl.createTexture()!;
     this.materialsTexture = this.gl.createTexture()!;
     this.lightSourcesTexture = this.gl.createTexture()!;
+    this.noiseTexture = this.gl.createTexture()!;
 
     this.renderTexture0 = this.gl.createTexture()!;
     this.renderTexture1 = this.gl.createTexture()!;
@@ -503,7 +505,43 @@ class Raytracing extends GraphicMode {
       0,
       this.gl.RGB,
       this.gl.FLOAT,
-      new Float32Array([100, 100, 100, 0, 0, 0])
+      new Float32Array([0, 0, 0, 0, 0, 0])
+    );
+    this.gl.texParameteri(
+      this.gl.TEXTURE_2D,
+      this.gl.TEXTURE_MAG_FILTER,
+      this.gl.NEAREST
+    );
+    this.gl.texParameteri(
+      this.gl.TEXTURE_2D,
+      this.gl.TEXTURE_MIN_FILTER,
+      this.gl.NEAREST
+    );
+
+    const noise_width = this.gl.canvas.width;
+    const noise_height = this.gl.canvas.height;
+    const noise_data: number[] = [];
+
+    for (let i = 0; i < noise_width; i++) {
+      for (let j = 0; j < noise_height; j++) {
+        noise_data.push(Math.random());
+        noise_data.push(Math.random());
+        noise_data.push(Math.random());
+      }
+    }
+
+    this.gl.activeTexture(this.gl.TEXTURE7);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.noiseTexture);
+    this.gl.texImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      this.gl.RGB32F,
+      noise_width,
+      noise_height,
+      0,
+      this.gl.RGB,
+      this.gl.FLOAT,
+      new Float32Array(noise_data)
     );
     this.gl.texParameteri(
       this.gl.TEXTURE_2D,
@@ -517,15 +555,16 @@ class Raytracing extends GraphicMode {
     );
 
     this.gl.useProgram(this.shaderProgramFrame);
-    this.gl.uniform1i(this.renderTextureLocationFrame, 0); // texture unit 0 or 1
+    this.gl.uniform1i(this.renderTextureLocationFrame, 0); // texture unit 0
 
     this.gl.useProgram(this.shaderProgram);
-    this.gl.uniform1i(this.renderTextureLocation, 1); // texture unit 0 or 1
-    this.gl.uniform1i(this.verticesLocation, 2); // texture unit 1
-    this.gl.uniform1i(this.trianglesLocation, 3); // texture unit 2
-    this.gl.uniform1i(this.objectsLocation, 4); // texture unit 3
-    this.gl.uniform1i(this.materialsLocation, 5); // texture unit 4
-    this.gl.uniform1i(this.lightSourcesLocation, 6); // texture unit 5
+    this.gl.uniform1i(this.renderTextureLocation, 1); // texture unit 1
+    this.gl.uniform1i(this.verticesLocation, 2); // texture unit 2
+    this.gl.uniform1i(this.trianglesLocation, 3); // texture unit 3
+    this.gl.uniform1i(this.objectsLocation, 4); // texture unit 4
+    this.gl.uniform1i(this.materialsLocation, 5); // texture unit 5
+    this.gl.uniform1i(this.lightSourcesLocation, 6); // texture unit 6
+    this.gl.uniform1i(this.noiseLocation, 7); // texture unit 7
   }
 
   setTextures(
@@ -541,6 +580,7 @@ class Raytracing extends GraphicMode {
         Math.max(vertices.length, objects.length, triangles.length) / 3
     );
 
+    this.gl.activeTexture(this.gl.TEXTURE2);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.verticesTexture);
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
@@ -554,6 +594,7 @@ class Raytracing extends GraphicMode {
       new Float32Array(vertices)
     );
 
+    this.gl.activeTexture(this.gl.TEXTURE3);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.trianglesTexture);
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
@@ -567,6 +608,7 @@ class Raytracing extends GraphicMode {
       new Uint32Array(triangles)
     );
 
+    this.gl.activeTexture(this.gl.TEXTURE4);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.objectsTexture);
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
@@ -580,6 +622,7 @@ class Raytracing extends GraphicMode {
       new Float32Array(objects)
     );
 
+    this.gl.activeTexture(this.gl.TEXTURE5);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.materialsTexture);
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
@@ -593,6 +636,7 @@ class Raytracing extends GraphicMode {
       new Float32Array(materials)
     );
 
+    this.gl.activeTexture(this.gl.TEXTURE6);
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.lightSourcesTexture);
     this.gl.texImage2D(
       this.gl.TEXTURE_2D,
